@@ -2,5 +2,9 @@
 name = "shears"
 version = "0.1.0"
 edition = "2024"
+description = "Eliminate unneeded recipes in KubeJS Minecraft Modpacks."
+readme = "README.md"
+authors = ["lumi-a"]
+rust-version = "1.99"
 
 [dependencies]
