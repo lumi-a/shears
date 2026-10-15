@@ -4,6 +4,7 @@ Find optimal clusterings and optimal hierarchical clusterings.
 ## todos
 - Add more manifest information
 - Add more README information, e.g. badges and links to docs, once up
+- Block-quote License and Conribution sections in RDEAME?
 
 ## License
 
