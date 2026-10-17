@@ -1,0 +1,23 @@
+[package]
+name = "shears-core"
+description = "Core graph model and analysis for shears, a KubeJS recipe-graph pruning tool."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+fs = []
+parallel = []
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

@@ -1,16 +1,19 @@
-[package]
-name = "shears"
+[workspace]
+resolver = "3"
+members = ["crates/core", "crates/cli"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
-description = "Eliminate unneeded recipes in KubeJS Minecraft Modpacks."
 license = "MIT OR Apache-2.0"
-readme = "README.md"
 authors = ["lumi-a"]
 rust-version = "1.99"
+repository = "https://github.com/lumi-a/shears"
+readme = "README.md"
+keywords = ["minecraft", "kubejs", "modpack", "recipes"]
+categories = ["games", "game-development"]
 
-[dependencies]
-
-[lints.clippy]
+[workspace.lints.clippy]
 all = "warn"
 cargo = "warn"
 complexity = "warn"
@@ -39,8 +42,6 @@ else_if_without_else = "warn"
 empty_drop = "warn"
 empty_enum_variants_with_brackets = "warn"
 empty_structs_with_brackets = "warn"
-exhaustive_enums = "warn"
-exhaustive_structs = "warn"
 field_scoped_visibility_modifiers = "warn"
 filetype_is_file = "warn"
 float_cmp_const = "warn"
@@ -114,7 +115,7 @@ use_debug = "warn"
 verbose_file_reads = "warn"
 wildcard_enum_match_arm = "warn"
 
-[lints.rust]
+[workspace.lints.rust]
 absolute_paths_not_starting_with_crate = "warn"
 ambiguous_negative_literals = "warn"
 closure_returning_async_block = "warn"
@@ -140,6 +141,6 @@ unused_qualifications = "warn"
 unused_results = "warn"
 variant_size_differences = "warn"
 
-[lints.rustdoc]
+[workspace.lints.rustdoc]
 missing_crate_level_docs = "warn"
 unescaped_backticks = "warn"
