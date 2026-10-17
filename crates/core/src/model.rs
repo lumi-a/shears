@@ -49,7 +49,7 @@ pub struct Slot {
     count: f32,
     /// Chance that this slot is consumed, in `[0, 1]`. Catalyst are chance 0.
     ///
-    /// GTCEu encodes this as `chance / maxChance`, with
+    /// `GTCEu` encodes this as `chance / maxChance`, with
     /// maxChance == 10000 if unspecified.
     chance: f32,
 }
@@ -63,7 +63,7 @@ pub struct Output {
     count: f32,
     /// Chance of this output occurring, in `[0, 1]`.
     ///
-    /// GTCEu encodes this as `chance / maxChance`, with
+    /// `GTCEu` encodes this as `chance / maxChance`, with
     /// maxChance == 10000 if unspecified.
     chance: f32,
 }
@@ -75,7 +75,7 @@ pub struct Recipe {
     id: String,
     /// Index into [`Graph::recipe_types`] for this recipe's type,
     /// e.g. `minecraft:smelting`.
-    recipe_type: u32,
+    rtype: u32,
     /// Inputs. AND over slots, an OR within each slots options (usually tag-expanded).
     inputs: Vec<Slot>,
     /// Outputs of this recipe.
@@ -101,7 +101,7 @@ pub struct Graph {
     recipes: Vec<Recipe>,
     /// Interned tag names. These are indexed by [`Item::tags`] and [`Slot::tag`].
     tags: Vec<String>,
-    /// Interned recipe type names. These are indexed by [`Recipe::recipe_type`].
+    /// Interned recipe type names. These are indexed by [`Recipe::rtype`].
     recipe_types: Vec<String>,
 }
 
@@ -129,7 +129,7 @@ mod tests {
             ],
             recipes: vec![Recipe {
                 id: "minecraft:iron_ingot_from_smelting".to_owned(),
-                recipe_type: 0,
+                rtype: 0,
                 inputs: vec![Slot {
                     members: BTreeSet::from([ItemId(1)]),
                     tag: None,
