@@ -51,16 +51,23 @@ pub(super) fn crafting_shaped(
         .and_then(Value::as_array)
         .ok_or_else(|| "missing or malformed `pattern`".to_owned())?;
 
-    let mut char_counts: BTreeMap<char, u32> = BTreeMap::new();
+    // Pattern rows and key symbols are matched by KubeJS/Java, whose strings are
+    // UTF-16: a Java `char` is one UTF-16 code unit, not one Rust `char` (one Unicode
+    // scalar value). They agree for every symbol in the Basic Multilingual Plane
+    // (everything realistically used), but a symbol above it is one Rust `char` and
+    // two Java `char`s, i.e. two grid cells there, one here if we iterated by Rust
+    // `char`. Iterating `encode_utf16()` instead matches Java's own semantics,
+    // not just for every symbol seen so far.
+    let mut unit_counts: BTreeMap<u16, u32> = BTreeMap::new();
     for row_value in pattern {
         let row_str = row_value
             .as_str()
             .ok_or_else(|| "the pattern's row is not a string".to_owned())?;
-        // TODO: KubeJS and Rust disagree for unicode values above 0xFFFF.
-        // Perhaps raise an error, or be nice and iterate java-style.
-        // I think java-style iteration may be possible via `row_str.encode_utf16`?
-        for symbol in row_str.chars().filter(|&symbol| symbol != ' ') {
-            *char_counts.entry(symbol).or_insert(0) += 1;
+        for symbol in row_str
+            .encode_utf16()
+            .filter(|&symbol| symbol != u16::from(b' '))
+        {
+            *unit_counts.entry(symbol).or_insert(0) += 1;
         }
     }
 
@@ -69,18 +76,16 @@ pub(super) fn crafting_shaped(
     // We do this /after/ parsing the pattern, so that we can skip having
     // to worry about unused keys (see `continue` inside)
     for (symbol, ingredient_value) in key {
-        let mut chars = symbol.chars();
-        let Some(symbol_char) = chars.next() else {
+        let mut units = symbol.encode_utf16();
+        let Some(symbol_unit) = units.next() else {
             return Err("empty key symbol".to_owned());
         };
-        if chars.next().is_some() {
+        if units.next().is_some() {
             return Err(format!("multi-character key symbol {symbol:?}"));
         }
-        let Some(&cell_count) = char_counts.get(&symbol_char) else {
+        let Some(&cell_count) = unit_counts.get(&symbol_unit) else {
             // Declared in `key` but never used in `pattern`.
-            //
-            // TODO: Perhaps this should raise a warning? But it's
-            // not really our business...
+            // Not our business.
             continue;
         };
         let leaves = parse_ingredient(ingredient_value)
@@ -317,6 +322,39 @@ mod tests {
                 .expect("test item")
         );
         assert_eq!(output.count(), 2);
+    }
+
+    #[test]
+    fn crafting_shaped_rejects_a_key_symbol_above_the_basic_multilingual_plane() {
+        let (item_index, tag_index) =
+            item_only_resolver(&["minecraft:acacia_planks", "minecraft:acacia_trapdoor"]);
+        let tag_members = BTreeMap::new();
+        let resolver = Resolver {
+            item_index: &item_index,
+            tag_index: &tag_index,
+            tag_members: &tag_members,
+        };
+
+        // U+1F642 is one Rust `char` but two UTF-16 code units (a surrogate pair) —
+        // two Java `char`s, so KubeJS/Java would never accept it as a single pattern
+        // symbol either. Confirms `encode_utf16` rejects it instead of accepting it
+        // as a single symbol the way iterating by Rust `char` would have.
+        let error = crafting_shaped(
+            "minecraft:acacia_trapdoor".to_owned(),
+            &json!({
+                "type": "minecraft:crafting_shaped",
+                "key": {"🙂": {"item": "minecraft:acacia_planks"}},
+                "pattern": ["🙂🙂🙂", "🙂🙂🙂"],
+                "result": {"count": 2, "item": "minecraft:acacia_trapdoor"},
+            }),
+            &resolver,
+        )
+        .expect_err("a key symbol above the BMP should be rejected, not accepted as one unit");
+
+        assert!(
+            error.contains("multi-character key symbol"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]

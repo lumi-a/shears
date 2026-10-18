@@ -54,6 +54,7 @@ impl ParseReport {
 ///
 /// The type is still a bare string, since the full set of types isn't
 /// known until every recipe file has been seen.
+#[derive(Debug)]
 struct RecipeDraft {
     /// The recipe id, taken from its file path.
     id: String,
