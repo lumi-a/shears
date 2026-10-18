@@ -1,22 +1,38 @@
-//! Ids, items, recipes and the graph that holds them.
+//! Items, recipes and the graph that holds them.
 //!
 //! These are plain data: construction, adjacency and analysis live elsewhere.
+//!
+//! Terminology:
+//! - An **id**, as in `Item::id` or `Recipe::id`, is the namespaced string
+//! Minecraft itself calls an id (or "Identifier"), e.g. `"minecraft:iron_ingot"`.
+//! - An **index**, as in `ItemIndex` or `RecipeIndex`, is this crate's own `u32`
+//! position into `Graph::items` or `Graph::recipes`. It has no Minecraft meaning
+//! and is only ever valid for the one `Graph` it came from.
 
 use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
-/// Index into [`Graph::items`].
+/// Index into `Graph::items`.
 ///
 /// Only meaningful for the specific [`Graph`] that produced it.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
-pub struct ItemId(u32);
+pub struct ItemIndex(u32);
 
-/// Index into [`Graph::recipes`].
+impl ItemIndex {
+    /// Constructs the index for the item at this position in [`Graph::items`].
+    ///
+    /// The caller is responsible for the index being coupled to the correct [`Graph`].
+    pub(crate) const fn new(index: u32) -> Self {
+        Self(index)
+    }
+}
+
+/// Index into `Graph::recipes`.
 ///
 /// Only meaningful for the specific [`Graph`] that produced it.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
-pub struct RecipeId(u32);
+pub struct RecipeIndex(u32);
 
 /// What kind of stack an [`Item`] is.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -38,15 +54,22 @@ pub struct Item {
     tags: BTreeSet<u32>,
 }
 
+impl Item {
+    /// Constructs an item or fluid.
+    pub(crate) const fn new(id: String, kind: ItemKind, tags: BTreeSet<u32>) -> Self {
+        Self { id, kind, tags }
+    }
+}
+
 /// One input slot of a [`Recipe`]. This is an OR over the slot's members.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Slot {
     /// Tag-expanded alternatives for this slot.
-    members: BTreeSet<ItemId>,
+    members: BTreeSet<ItemIndex>,
     /// Index into [`Graph::tags`] for the tag this slot was expanded from, if any.
     tag: Option<u32>,
     /// Number of items or millibuckets.
-    count: f32,
+    count: u32,
     /// Chance that this slot is consumed, in `[0, 1]`. Catalyst are chance 0.
     ///
     /// `GTCEu` encodes this as `chance / maxChance`, with
@@ -54,18 +77,82 @@ pub struct Slot {
     chance: f32,
 }
 
+impl Slot {
+    /// Constructs an input slot.
+    pub(crate) const fn new(
+        members: BTreeSet<ItemIndex>,
+        tag: Option<u32>,
+        count: u32,
+        chance: f32,
+    ) -> Self {
+        Self {
+            members,
+            tag,
+            count,
+            chance,
+        }
+    }
+
+    /// Index into [`Graph::tags`] for the tag this slot was expanded from, if any.
+    ///
+    /// Test-only for now.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) const fn tag(&self) -> Option<u32> {
+        self.tag
+    }
+
+    /// Number of items or millibuckets.
+    ///
+    /// Test-only for now.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) const fn count(&self) -> u32 {
+        self.count
+    }
+}
+
 /// One output of a [`Recipe`].
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Output {
     /// The item or fluid produced.
-    item: ItemId,
+    item: ItemIndex,
     /// How many items or how many millibuckets are produced.
-    count: f32,
+    count: u32,
     /// Chance of this output occurring, in `[0, 1]`.
     ///
     /// `GTCEu` encodes this as `chance / maxChance`, with
     /// maxChance == 10000 if unspecified.
     chance: f32,
+}
+
+impl Output {
+    /// Constructs a recipe output.
+    pub(crate) const fn new(item: ItemIndex, count: u32, chance: f32) -> Self {
+        Self {
+            item,
+            count,
+            chance,
+        }
+    }
+
+    /// The item or fluid produced.
+    ///
+    /// Test-only for now.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) const fn item(&self) -> ItemIndex {
+        self.item
+    }
+
+    /// How many items or millibuckets are produced.
+    ///
+    /// Test-only for now.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) const fn count(&self) -> u32 {
+        self.count
+    }
 }
 
 /// A recipe: a node on the "process" side of the bipartite graph.
@@ -84,6 +171,27 @@ pub struct Recipe {
     eu_t: Option<i64>,
     /// Duration in ticks, for recipes that have it.
     ticks: Option<u32>,
+}
+
+impl Recipe {
+    /// Constructs a recipe.
+    pub(crate) const fn new(
+        id: String,
+        rtype: u32,
+        inputs: Vec<Slot>,
+        outputs: Vec<Output>,
+        eu_t: Option<i64>,
+        ticks: Option<u32>,
+    ) -> Self {
+        Self {
+            id,
+            rtype,
+            inputs,
+            outputs,
+            eu_t,
+            ticks,
+        }
+    }
 }
 
 /// The bipartite graph of items and recipes.
@@ -105,11 +213,34 @@ pub struct Graph {
     recipe_types: Vec<String>,
 }
 
+impl Graph {
+    /// Assembles a graph from already-sorted, already-interned parts.
+    ///
+    /// The caller is responsible for `items` and `recipes` being sorted by id, and for
+    /// every index referenced from within them being valid for the `tags` and
+    /// `recipe_types`.
+    pub(crate) const fn new(
+        schema: u32,
+        items: Vec<Item>,
+        recipes: Vec<Recipe>,
+        tags: Vec<String>,
+        recipe_types: Vec<String>,
+    ) -> Self {
+        Self {
+            schema,
+            items,
+            recipes,
+            tags,
+            recipe_types,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::{Graph, Item, ItemId, ItemKind, Output, Recipe, Slot};
+    use super::{Graph, Item, ItemIndex, ItemKind, Output, Recipe, Slot};
 
     #[test]
     fn graph_json_round_trip_is_stable() {
@@ -131,14 +262,14 @@ mod tests {
                 id: "minecraft:iron_ingot_from_smelting".to_owned(),
                 rtype: 0,
                 inputs: vec![Slot {
-                    members: BTreeSet::from([ItemId(1)]),
+                    members: BTreeSet::from([ItemIndex(1)]),
                     tag: None,
-                    count: 1.0,
+                    count: 1,
                     chance: 1.0,
                 }],
                 outputs: vec![Output {
-                    item: ItemId(0),
-                    count: 1.0,
+                    item: ItemIndex(0),
+                    count: 1,
                     chance: 1.0,
                 }],
                 eu_t: None,

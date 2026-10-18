@@ -5,3 +5,17 @@
 
 /// The graph, and its constituent Items and Recipes.
 pub mod model;
+
+/// Turns a `/kubejs export` into a [`model::Graph`].
+///
+/// Problems turn into [`ingest::Diagnostic`]s in the returned [`ingest::ParseReport`].
+///
+/// Tags and the item/fluid registries are resolved first.
+/// Every recipe file can then be parsed to real ids without incomplete drafts.
+pub mod ingest;
+
+/// Reads a raw export filesystem directory into [`ingest::RawFile`]s.
+///
+/// Behind the `fs` feature.
+#[cfg(feature = "fs")]
+pub mod io;
