@@ -1,4 +1,3 @@
-//!
 //! ```txt
 //! alive(i) ⟺
 //!   i ∈ roots OR
@@ -303,7 +302,7 @@ mod tests {
         let ingot = ItemIndex::new(1);
         let ore = ItemIndex::new(2);
         let plate = ItemIndex::new(3);
-        
+
         // Sorted recipe order: mine=0, press=1, smelt=2.
         let mine = RecipeIndex::new(0);
         let press = RecipeIndex::new(1);

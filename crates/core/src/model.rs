@@ -439,4 +439,18 @@ mod tests {
 
         assert_eq!(first, second, "graph.json should round-trip identically");
     }
+
+    proptest::proptest! {
+        #[test]
+        fn item_index_round_trips_through_usize(raw: u32) {
+            let expected = usize::try_from(raw).expect("u32 always fits in usize on supported targets");
+            proptest::prop_assert_eq!(ItemIndex::new(raw).index(), expected);
+        }
+
+        #[test]
+        fn recipe_index_round_trips_through_usize(raw: u32) {
+            let expected = usize::try_from(raw).expect("u32 always fits in usize on supported targets");
+            proptest::prop_assert_eq!(super::RecipeIndex::new(raw).index(), expected);
+        }
+    }
 }
