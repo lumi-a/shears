@@ -6,6 +6,9 @@
 /// The graph, and its constituent Items and Recipes.
 pub mod model;
 
+/// Analysis of the graph state.
+pub mod analysis;
+
 /// Turns a `/kubejs export` into a [`model::Graph`].
 ///
 /// Problems turn into [`ingest::Diagnostic`]s in the returned [`ingest::ParseReport`].

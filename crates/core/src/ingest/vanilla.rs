@@ -73,7 +73,7 @@ pub(super) fn crafting_shaped(
 
     let mut inputs = Vec::new();
     // Try and decypher the key
-    // We do this /after/ parsing the pattern, so that we can skip having
+    // We do this *after* parsing the pattern, so that we can skip having
     // to worry about unused keys (see `continue` inside)
     for (symbol, ingredient_value) in key {
         let mut units = symbol.encode_utf16();
@@ -105,7 +105,7 @@ pub(super) fn crafting_shaped(
         inputs,
         outputs: vec![output],
         // TODO:
-        // There /are/ automation machines that can craft stuff
+        // There *are* automation machines that can craft stuff
         // for you. Same for stonecutting and smithing.
         // But I don't yet know how to properly accept that
         // information (energy, time) from the user; surely this

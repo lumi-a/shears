@@ -26,6 +26,20 @@ impl ItemIndex {
     pub(crate) const fn new(index: u32) -> Self {
         Self(index)
     }
+
+    /// This index's position as `usize`.
+    ///
+    /// Useful for indexing into a side table shaped like [`Graph::items`].
+    ///
+    /// # Panics
+    ///
+    /// Never panics on the 32- and 64-bit targets this crate supports.
+    /// `u32` always fits in `usize` there.
+    #[inline]
+    #[must_use]
+    pub fn index(self) -> usize {
+        usize::try_from(self.0).expect("u32 always fits in usize on supported targets")
+    }
 }
 
 /// Index into `Graph::recipes`.
@@ -33,6 +47,29 @@ impl ItemIndex {
 /// Only meaningful for the specific [`Graph`] that produced it.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 pub struct RecipeIndex(u32);
+
+impl RecipeIndex {
+    /// Constructs the index for the recipe at this position in [`Graph::recipes`].
+    ///
+    /// The caller is responsible for the index being tied to the correct [`Graph`].
+    pub(crate) const fn new(index: u32) -> Self {
+        Self(index)
+    }
+
+    /// This index's position as `usize`.
+    ///
+    /// Useful for indexing into a side table shaped like [`Graph::items`].
+    ///
+    /// # Panics
+    ///
+    /// Never panics on the 32- and 64-bit targets this crate supports.
+    /// `u32` always fits in `usize` there.
+    #[inline]
+    #[must_use]
+    pub fn index(self) -> usize {
+        usize::try_from(self.0).expect("u32 always fits in usize on supported targets")
+    }
+}
 
 /// What kind of stack an [`Item`] is.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -59,6 +96,27 @@ impl Item {
     pub(crate) const fn new(id: String, kind: ItemKind, tags: BTreeSet<u32>) -> Self {
         Self { id, kind, tags }
     }
+
+    /// The full id, e.g. `minecraft:iron_ingot`.
+    #[inline]
+    #[must_use]
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Whether this is an item or fluid.
+    #[inline]
+    #[must_use]
+    pub const fn kind(&self) -> ItemKind {
+        self.kind
+    }
+
+    /// Indices into [`Graph::tags`] for every tag of this [`Item`].
+    #[inline]
+    #[must_use]
+    pub const fn tags(&self) -> &BTreeSet<u32> {
+        &self.tags
+    }
 }
 
 /// One input slot of a [`Recipe`]. This is an OR over the slot's members.
@@ -79,6 +137,8 @@ pub struct Slot {
 
 impl Slot {
     /// Constructs an input slot.
+    ///
+    /// TODO: Should we check that `chance` is in [0, 1]?
     pub(crate) const fn new(
         members: BTreeSet<ItemIndex>,
         tag: Option<u32>,
@@ -93,22 +153,32 @@ impl Slot {
         }
     }
 
-    /// Index into [`Graph::tags`] for the tag this slot was expanded from, if any.
-    ///
-    /// Test-only for now.
-    #[cfg(test)]
+    /// Tag-expanded alternatives for this slot.
+    #[inline]
     #[must_use]
-    pub(crate) const fn tag(&self) -> Option<u32> {
+    pub const fn members(&self) -> &BTreeSet<ItemIndex> {
+        &self.members
+    }
+
+    /// Index into [`Graph::tags`] for the tag this slot was expanded from, if any.
+    #[inline]
+    #[must_use]
+    pub const fn tag(&self) -> Option<u32> {
         self.tag
     }
 
     /// Number of items or millibuckets.
-    ///
-    /// Test-only for now.
-    #[cfg(test)]
+    #[inline]
     #[must_use]
-    pub(crate) const fn count(&self) -> u32 {
+    pub const fn count(&self) -> u32 {
         self.count
+    }
+
+    /// Chance that this slot is consumed, in `[0, 1]`.
+    #[inline]
+    #[must_use]
+    pub const fn chance(&self) -> f32 {
+        self.chance
     }
 }
 
@@ -128,6 +198,8 @@ pub struct Output {
 
 impl Output {
     /// Constructs a recipe output.
+    ///
+    /// TODO: Should we check that `chance` is in \[0,1\] or even (0,1\]?
     pub(crate) const fn new(item: ItemIndex, count: u32, chance: f32) -> Self {
         Self {
             item,
@@ -137,21 +209,24 @@ impl Output {
     }
 
     /// The item or fluid produced.
-    ///
-    /// Test-only for now.
-    #[cfg(test)]
+    #[inline]
     #[must_use]
-    pub(crate) const fn item(&self) -> ItemIndex {
+    pub const fn item(&self) -> ItemIndex {
         self.item
     }
 
     /// How many items or millibuckets are produced.
-    ///
-    /// Test-only for now.
-    #[cfg(test)]
+    #[inline]
     #[must_use]
-    pub(crate) const fn count(&self) -> u32 {
+    pub const fn count(&self) -> u32 {
         self.count
+    }
+
+    /// Chance of this output occurring, in `[0, 1]`.
+    #[inline]
+    #[must_use]
+    pub const fn chance(&self) -> f32 {
+        self.chance
     }
 }
 
@@ -191,6 +266,48 @@ impl Recipe {
             eu_t,
             ticks,
         }
+    }
+
+    /// The recipe id, e.g. `minecraft:iron_ingot_from_smelting`.
+    #[inline]
+    #[must_use]
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Index into [`Graph::recipe_types`] for this recipe's type.
+    #[inline]
+    #[must_use]
+    pub const fn rtype(&self) -> u32 {
+        self.rtype
+    }
+
+    /// Inputs. AND over slots, an OR within each slot's members.
+    #[inline]
+    #[must_use]
+    pub fn inputs(&self) -> &[Slot] {
+        &self.inputs
+    }
+
+    /// Outputs of this recipe.
+    #[inline]
+    #[must_use]
+    pub fn outputs(&self) -> &[Output] {
+        &self.outputs
+    }
+
+    /// EU/t, for recipes that have it.
+    #[inline]
+    #[must_use]
+    pub const fn eu_t(&self) -> Option<i64> {
+        self.eu_t
+    }
+
+    /// Duration in ticks, for recipes that have it.
+    #[inline]
+    #[must_use]
+    pub const fn ticks(&self) -> Option<u32> {
+        self.ticks
     }
 }
 
@@ -233,6 +350,41 @@ impl Graph {
             tags,
             recipe_types,
         }
+    }
+
+    /// Schema version of this file, for sake of forward compatibility.
+    #[inline]
+    #[must_use]
+    pub const fn schema(&self) -> u32 {
+        self.schema
+    }
+
+    /// Items and fluids, sorted by [`Item::id`].
+    #[inline]
+    #[must_use]
+    pub fn items(&self) -> &[Item] {
+        &self.items
+    }
+
+    /// Recipes, sorted by [`Recipe::id`].
+    #[inline]
+    #[must_use]
+    pub fn recipes(&self) -> &[Recipe] {
+        &self.recipes
+    }
+
+    /// Interned tag names. These are indexed by [`Item::tags`] and [`Slot::tag`].
+    #[inline]
+    #[must_use]
+    pub fn tags(&self) -> &[String] {
+        &self.tags
+    }
+
+    /// Interned recipe type names. These are indexed by [`Recipe::rtype`].
+    #[inline]
+    #[must_use]
+    pub fn recipe_types(&self) -> &[String] {
+        &self.recipe_types
     }
 }
 
