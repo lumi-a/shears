@@ -1,4 +1,3 @@
-//!
 //! Annotate first, then compute
 //! (edge states, liveness, byproducts, open competitions).
 

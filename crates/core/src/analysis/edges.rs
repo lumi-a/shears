@@ -1,4 +1,3 @@
-//!
 //! Propagation lives *only* on `recipe -> output` edges, not on inputs.
 
 use serde::{Deserialize, Serialize};
@@ -63,12 +62,14 @@ pub enum Cause {
 pub struct EdgeStates {
     /// `state[recipe.index()][output]` is that edge's current [`EdgeState`].
     state: Vec<Vec<EdgeState>>,
-    /// `cause[recipe.index()][output]` is why `state[recipe.index()][output]` is what it is.
+    /// `cause[recipe.index()][output]` is why `state[recipe.index()][output]` is what it
+    /// is.
     cause: Vec<Vec<Cause>>,
 }
 
 impl EdgeStates {
-    /// Every edge starts at [`EdgeState::Propagate`]/[`Cause::Default`], shaped like `graph`.
+    /// Every edge starts at [`EdgeState::Propagate`]/[`Cause::Default`], shaped like
+    /// `graph`.
     #[inline]
     #[must_use]
     pub fn defaults(graph: &Graph) -> Self {
