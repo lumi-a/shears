@@ -77,4 +77,41 @@ mod tests {
         assert_eq!(producers.of(ItemIndex::new(1)), &[]);
         assert_eq!(producers.of(ItemIndex::new(2)), &[]);
     }
+
+    #[test]
+    fn aggregates_producers_across_different_recipes() {
+        let (graph, _roots) = parse(
+            "
+            root concrete
+            mix: stone_dust + water -> concrete
+            alt: sand + water -> concrete
+            ",
+        );
+        let producers = Producers::build(&graph);
+
+        // Sorted recipe order: alt=0, mix=1.
+        assert_eq!(
+            producers.of(ItemIndex::new(0)),
+            &[(RecipeIndex::new(0), 0), (RecipeIndex::new(1), 0)]
+        );
+    }
+
+    #[test]
+    fn keeps_both_entries_when_one_recipe_outputs_the_same_item_twice() {
+        // E.g. a macerator recipe with a guaranteed dust output and a
+        // separate chance-based bonus dust output of the same item.
+        let (graph, _roots) = parse(
+            "
+            root dust
+            macerate: ore -> 2 dust + 13 useless + 1 dust
+            ",
+        );
+        let producers = Producers::build(&graph);
+
+        // Sorted item order: dust=0, ore=1.
+        assert_eq!(
+            producers.of(ItemIndex::new(0)),
+            &[(RecipeIndex::new(0), 0), (RecipeIndex::new(0), 2)]
+        );
+    }
 }

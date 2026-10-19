@@ -45,20 +45,10 @@ pub enum Cause {
     /// A rule from `rules.toml`.
     ///
     /// `file` and `index` locate which rule, for `explain::why`.
-    ///
-    /// TODO: This also means that rules.toml should support (enforce?)
-    /// explanations inside of it.
     Rule {
         /// Which rules file, in load order (presets first, then local).
-        ///
-        /// TODO: This requires some deterministic file order. Must work
-        /// in both abstract wasm space, and filesystem space.
         file: u16,
         /// The rule's position within that file.
-        ///
-        /// TODO: We must also enforce that `index` is proper. Perhaps rules
-        /// should have unique-enforced names instead? But indices are much
-        /// smaller, and this index is only ever program-internal...
         index: u32,
     },
     /// A decision from `decisions.toml`, by its position in the file.
