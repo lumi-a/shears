@@ -9,3 +9,7 @@ pub mod adjacency;
 
 /// The liveness computation.
 pub mod liveness;
+
+/// Random small graphs for property tests.
+#[cfg(test)]
+mod proptest_support;

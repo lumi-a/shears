@@ -151,10 +151,69 @@ pub fn liveness(graph: &Graph, attrs: &NodeAttrs, edges: &EdgeStates) -> Livenes
     }
 }
 
+/// Naive reference liveness. Iterates the fixpoint equation to a fixed
+/// point by rescanning every recipe, instead of BFS.
+/// 
+/// This is only used to test [`liveness`] against a structurally different
+/// implementation of the equation.
+#[cfg(test)]
+fn naive_liveness(
+    graph: &Graph,
+    attrs: &NodeAttrs,
+    edges: &EdgeStates,
+) -> (FixedBitSet, FixedBitSet) {
+    let mut alive_item = FixedBitSet::with_capacity(graph.items().len());
+    for position in 0..graph.items().len() {
+        let item = ItemIndex::new(u32::try_from(position).expect("item count fits u32"));
+        if attrs.is_root(item) {
+            alive_item.insert(position);
+        }
+    }
+    let mut alive_recipe = FixedBitSet::with_capacity(graph.recipes().len());
+
+    loop {
+        let mut changed = false;
+        for (recipe_position, recipe) in graph.recipes().iter().enumerate() {
+            let recipe_index =
+                RecipeIndex::new(u32::try_from(recipe_position).expect("recipe count fits u32"));
+            for (output_position, output) in recipe.outputs().iter().enumerate() {
+                let output_index =
+                    u8::try_from(output_position).expect("outputs per recipe fit u8");
+                if edges.state(recipe_index, output_index) != EdgeState::Propagate {
+                    continue;
+                }
+                if !alive_item.contains(output.item().index()) {
+                    continue;
+                }
+                if !alive_recipe.contains(recipe_position) {
+                    alive_recipe.insert(recipe_position);
+                    changed = true;
+                }
+                for slot in recipe.inputs() {
+                    for &member in slot.members() {
+                        if !alive_item.contains(member.index()) {
+                            alive_item.insert(member.index());
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+
+    (alive_item, alive_recipe)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Why, liveness};
+    use proptest::prelude::*;
+
+    use super::{Why, liveness, naive_liveness};
     use crate::analysis::edges::{Cause, EdgeState, EdgeStates, NodeAttrs};
+    use crate::analysis::proptest_support::arb_graph_attrs_edges;
     use crate::graph_dsl::parse;
     use crate::model::{ItemIndex, RecipeIndex};
 
@@ -360,5 +419,81 @@ mod tests {
             live.why(shared),
             Some(Why::Via { recipe, output }) if *recipe == short && *output == a
         ));
+    }
+
+    proptest! {
+        #[test]
+        fn matches_the_naive_fixpoint_oracle((graph, attrs, edges) in arb_graph_attrs_edges()) {
+            let live = liveness(&graph, &attrs, &edges);
+            let (oracle_alive_item, oracle_alive_recipe) = naive_liveness(&graph, &attrs, &edges);
+
+            for position in 0..graph.items().len() {
+                let item = ItemIndex::new(u32::try_from(position).expect("item count fits u32"));
+                prop_assert_eq!(live.is_alive(item), oracle_alive_item.contains(position));
+            }
+            for position in 0..graph.recipes().len() {
+                let recipe = RecipeIndex::new(u32::try_from(position).expect("recipe count fits u32"));
+                prop_assert_eq!(live.is_recipe_alive(recipe), oracle_alive_recipe.contains(position));
+            }
+        }
+
+        #[test]
+        fn adding_a_root_never_shrinks_the_alive_set(
+            (graph, attrs, edges) in arb_graph_attrs_edges(),
+            extra_root in 0_usize..9,
+        ) {
+            let extra_root_item = ItemIndex::new(
+                u32::try_from(extra_root % graph.items().len()).expect("item count fits u32"),
+            );
+            let before = liveness(&graph, &attrs, &edges);
+
+            let mut attrs_with_extra_root = attrs;
+            attrs_with_extra_root.set_root(extra_root_item, Cause::Pseudo);
+            let after = liveness(&graph, &attrs_with_extra_root, &edges);
+
+            for position in 0..graph.items().len() {
+                let item = ItemIndex::new(u32::try_from(position).expect("item count fits u32"));
+                if before.is_alive(item) {
+                    prop_assert!(after.is_alive(item));
+                }
+            }
+        }
+
+        #[test]
+        fn dropping_an_edge_never_grows_the_alive_set(
+            (graph, attrs, edges) in arb_graph_attrs_edges(),
+            edge_pick in 0_usize..27,
+        ) {
+            let total_edges: usize = graph.recipes().iter().map(|recipe| recipe.outputs().len()).sum();
+            prop_assume!(total_edges > 0);
+
+            let mut remaining = edge_pick % total_edges;
+            let mut chosen = None;
+            for (recipe_position, recipe) in graph.recipes().iter().enumerate() {
+                if remaining < recipe.outputs().len() {
+                    chosen = Some((recipe_position, remaining));
+                    break;
+                }
+                remaining -= recipe.outputs().len();
+            }
+            let (recipe_position, output_position) =
+                chosen.expect("edge_pick reduced mod total_edges always lands on a real edge");
+            let recipe = RecipeIndex::new(u32::try_from(recipe_position).expect("recipe count fits u32"));
+            let output = u8::try_from(output_position).expect("outputs per recipe fit u8");
+
+            let before = liveness(&graph, &attrs, &edges);
+
+            let mut edges_with_drop = edges;
+            let cause = edges_with_drop.cause(recipe, output).clone();
+            edges_with_drop.set(recipe, output, EdgeState::Dropped, cause);
+            let after = liveness(&graph, &attrs, &edges_with_drop);
+
+            for position in 0..graph.items().len() {
+                let item = ItemIndex::new(u32::try_from(position).expect("item count fits u32"));
+                if after.is_alive(item) {
+                    prop_assert!(before.is_alive(item));
+                }
+            }
+        }
     }
 }

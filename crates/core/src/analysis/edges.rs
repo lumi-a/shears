@@ -59,7 +59,7 @@ pub enum Cause {
 }
 
 /// For each `(recipe, output)` edge, a state and corresponding cause.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EdgeStates {
     /// `state[recipe.index()][output]` is that edge's current [`EdgeState`].
     state: Vec<Vec<EdgeState>>,
@@ -152,7 +152,7 @@ impl EdgeStates {
 /// Per-item annotations computed before edge states.
 ///
 /// Material and form per item, and per-recipe attributes like [`Show`].
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct NodeAttrs {
     /// `root.contains(item.index())`: whether `item` is a liveness root.
     root: FixedBitSet,
