@@ -197,6 +197,18 @@ impl NodeAttrs {
         self.root_cause.get(item.index()).and_then(Option::as_ref)
     }
 
+    /// Every item currently marked as a liveness root.
+    ///
+    /// # Panics
+    ///
+    /// If this graph has more than `u32::MAX` items.
+    #[inline]
+    pub fn roots(&self) -> impl Iterator<Item = ItemIndex> + '_ {
+        self.root.ones().map(|position| {
+            ItemIndex::new(u32::try_from(position).expect("fewer than u32::MAX items"))
+        })
+    }
+
     /// Marks `item` as a liveness root, and why.
     ///
     /// # Panics

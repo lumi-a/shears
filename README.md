@@ -4,7 +4,9 @@ Find optimal clusterings and optimal hierarchical clusterings.
 ## todos
 - Add more manifest information
 - Add more README information, e.g. badges and links to docs, once up
-- Block-quote License and Conribution sections in RDEAME?
+- Block-quote License and Conribution sections in README?
+- Figure out what KubeJS and MC version this supports, and support many
+  reasonable versions of either
 
 ## License
 

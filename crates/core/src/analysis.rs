@@ -6,3 +6,6 @@ pub mod edges;
 
 /// Lookups derived from a `Graph`. Not serialized, rebuilt after loading instead.
 pub mod adjacency;
+
+/// The liveness computation.
+pub mod liveness;
