@@ -1,8 +1,9 @@
 //! Propagation lives *only* on `recipe -> output` edges, not on inputs.
 
+use fixedbitset::FixedBitSet;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Graph, RecipeIndex};
+use crate::model::{Graph, ItemIndex, RecipeIndex};
 
 /// What a single `(recipe, output)` edge does for liveness propagation.
 ///
@@ -148,20 +149,95 @@ impl EdgeStates {
     }
 }
 
-/// Per-item and per-recipe annotations.
+/// Per-item annotations computed before edge states.
 ///
-/// Material and form per item, rule attributes.
-///
-/// Shape not decided yet: needs `root`/`world_source` bitsets keyed
-/// by item position.
+/// Material and form per item, and per-recipe attributes like [`Show`].
 #[derive(Debug)]
-pub struct NodeAttrs;
+pub struct NodeAttrs {
+    /// `root.contains(item.index())`: whether `item` is a liveness root.
+    root: FixedBitSet,
+    /// `root_cause[item.index()]` is why `item` is a root, if it is one.
+    root_cause: Vec<Option<Cause>>,
+    /// `world_source.contains(item.index())`: whether `item` is obtainable
+    /// in-world (ore, log, gravel, mob drop, ...).
+    ///
+    /// Not inferred from having no producing recipe, instead opt-in
+    /// via [`Self::set_world_source`].
+    world_source: FixedBitSet,
+}
+
+impl NodeAttrs {
+    /// Nothing is a root or a world source yet.
+    #[inline]
+    #[must_use]
+    pub fn defaults(graph: &Graph) -> Self {
+        let item_count = graph.items().len();
+        Self {
+            root: FixedBitSet::with_capacity(item_count),
+            root_cause: vec![None; item_count],
+            world_source: FixedBitSet::with_capacity(item_count),
+        }
+    }
+
+    /// Whether `item` is currently a liveness root.
+    ///
+    /// # Panics
+    ///
+    /// If `item` is out of bounds for the graph this was built from.
+    #[inline]
+    #[must_use]
+    pub fn is_root(&self, item: ItemIndex) -> bool {
+        self.root.contains(item.index())
+    }
+
+    /// Why `item` is a root, if it is one.
+    #[inline]
+    #[must_use]
+    pub fn root_cause(&self, item: ItemIndex) -> Option<&Cause> {
+        self.root_cause.get(item.index()).and_then(Option::as_ref)
+    }
+
+    /// Marks `item` as a liveness root, and why.
+    ///
+    /// # Panics
+    ///
+    /// If `item` is out of bounds for the graph this was built from.
+    #[inline]
+    pub fn set_root(&mut self, item: ItemIndex, cause: Cause) {
+        self.root.insert(item.index());
+        *self
+            .root_cause
+            .get_mut(item.index())
+            .expect("item index in bounds for this graph") = Some(cause);
+    }
+
+    /// Whether `item` is a world source.
+    ///
+    /// # Panics
+    ///
+    /// If `item` is out of bounds for the graph this was built from.
+    #[inline]
+    #[must_use]
+    pub fn is_world_source(&self, item: ItemIndex) -> bool {
+        self.world_source.contains(item.index())
+    }
+
+    /// Marks `item` as a world source.
+    ///
+    /// # Panics
+    ///
+    /// If `item` is out of bounds for the graph this was built from.
+    #[inline]
+    pub fn set_world_source(&mut self, item: ItemIndex) {
+        self.world_source.insert(item.index());
+    }
+}
 
 #[cfg(test)]
 mod tests {
-    use super::{Cause, EdgeState, EdgeStates};
+    use super::{Cause, EdgeState, EdgeStates, NodeAttrs};
     use crate::graph_dsl::parse;
-    use crate::model::RecipeIndex;
+    use crate::model::{ItemIndex, RecipeIndex};
 
     #[test]
     fn defaults_are_propagate_with_no_cause_and_shaped_like_the_graph() {
@@ -217,5 +293,65 @@ mod tests {
         let edges = EdgeStates::defaults(&graph);
 
         let _state = edges.state(RecipeIndex::new(0), 1);
+    }
+
+    #[test]
+    fn defaults_root_and_source_nothing_even_producerless_items() {
+        let (graph, _roots) = parse(
+            "
+            root concrete
+            mix: stone_dust + water -> concrete
+            ",
+        );
+        let attrs = NodeAttrs::defaults(&graph);
+
+        // Sorted item order: concrete=0, stone_dust=1, water=2.
+        assert!(!attrs.is_root(ItemIndex::new(0)));
+        assert!(attrs.root_cause(ItemIndex::new(0)).is_none());
+
+        // stone_dust and water have no producer in this fixture.
+        assert!(!attrs.is_world_source(ItemIndex::new(0)));
+        assert!(!attrs.is_world_source(ItemIndex::new(1)));
+        assert!(!attrs.is_world_source(ItemIndex::new(2)));
+    }
+
+    #[test]
+    fn set_world_source_marks_only_that_item() {
+        let (graph, _roots) = parse(
+            "
+            root concrete
+            mix: stone_dust + water -> concrete
+            ",
+        );
+        let mut attrs = NodeAttrs::defaults(&graph);
+
+        attrs.set_world_source(ItemIndex::new(1));
+
+        assert!(attrs.is_world_source(ItemIndex::new(1)));
+        assert!(!attrs.is_world_source(ItemIndex::new(0)));
+        assert!(!attrs.is_world_source(ItemIndex::new(2)));
+    }
+
+    #[test]
+    fn set_root_marks_the_item_and_records_the_cause() {
+        let (graph, _roots) = parse(
+            "
+            root concrete
+            mix: stone_dust + water -> concrete
+            ",
+        );
+        let mut attrs = NodeAttrs::defaults(&graph);
+
+        attrs.set_root(ItemIndex::new(1), Cause::Pseudo);
+
+        assert!(attrs.is_root(ItemIndex::new(1)));
+        assert!(matches!(
+            attrs.root_cause(ItemIndex::new(1)),
+            Some(Cause::Pseudo)
+        ));
+        assert!(
+            !attrs.is_root(ItemIndex::new(0)),
+            "unrelated items stay unrooted"
+        );
     }
 }
