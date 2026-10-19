@@ -19,3 +19,7 @@ pub mod ingest;
 /// Behind the `fs` feature.
 #[cfg(feature = "fs")]
 pub mod io;
+
+/// A tiny textual DSL for hand-written test graphs. Test-only.
+#[cfg(test)]
+mod graph_dsl;
