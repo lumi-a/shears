@@ -15,8 +15,8 @@ pub(super) enum Leaf {
 
 /// Parses a single alternative bare item or tag.
 ///
-/// Didn't see an array nested inside so far, so for now we treat
-/// it as unrecognised instead of flattening it.
+/// Didn't see an array nested inside so far, so for now we treat it as unrecognised
+/// instead of flattening it.
 fn parse_leaf(value: &Value) -> Option<Leaf> {
     match value {
         Value::Object(map) => match (map.get("item"), map.get("tag")) {
@@ -48,7 +48,7 @@ pub(super) fn parse_ingredient(value: &Value) -> Option<Vec<Leaf>> {
 mod tests {
     use serde_json::json;
 
-    use super::{Leaf, parse_ingredient};
+    use super::{parse_ingredient, Leaf};
 
     #[test]
     fn parses_a_bare_item_as_a_singleton() {

@@ -3,11 +3,11 @@
 //! These are plain data: construction, adjacency and analysis live elsewhere.
 //!
 //! Terminology:
-//! - An **id**, as in `Item::id` or `Recipe::id`, is the namespaced string
-//! Minecraft itself calls an id (or "Identifier"), e.g. `"minecraft:iron_ingot"`.
-//! - An **index**, as in `ItemIndex` or `RecipeIndex`, is this crate's own `u32`
-//! position into `Graph::items` or `Graph::recipes`. It has no Minecraft meaning
-//! and is only ever valid for the one `Graph` it came from.
+//! - An **id**, as in `Item::id` or `Recipe::id`, is the namespaced string Minecraft
+//!   itself calls an id (or "Identifier"), e.g. `"minecraft:iron_ingot"`.
+//! - An **index**, as in `ItemIndex` or `RecipeIndex`, is this crate's own `u32` position
+//!   into `Graph::items` or `Graph::recipes`. It has no Minecraft meaning and is only
+//!   ever valid for the one `Graph` it came from.
 
 use std::collections::BTreeSet;
 

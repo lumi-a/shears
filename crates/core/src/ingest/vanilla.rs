@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 
 use super::ingredient::parse_ingredient;
-use super::{RecipeDraft, Resolver, consumed_slot, resolve_output_id};
+use super::{consumed_slot, resolve_output_id, RecipeDraft, Resolver};
 use crate::model::Output;
 
 /// Reads a JSON number as `u32`.
@@ -16,8 +16,8 @@ fn as_u32(value: &Value) -> Option<u32> {
     u32::try_from(count).ok()
 }
 
-/// Parses and resolves the `{"item": ..., "count": ...}` result shape
-/// that's used by crafting and smithing.
+/// Parses and resolves the `{"item": ..., "count": ...}` result shape that's used by
+/// crafting and smithing.
 fn parse_result_object(value: &Value, resolver: &Resolver<'_>) -> Result<Output, String> {
     let object = value
         .as_object()
@@ -35,8 +35,8 @@ fn parse_result_object(value: &Value, resolver: &Resolver<'_>) -> Result<Output,
     Ok(Output::new(item, count, 1.0))
 }
 
-/// `minecraft:crafting_shaped` has a `key` of symbols to ingredient, and a `pattern`
-/// of symbols. The symbol count is how often it appears across the pattern.
+/// `minecraft:crafting_shaped` has a `key` of symbols to ingredient, and a `pattern` of
+/// symbols. The symbol count is how often it appears across the pattern.
 pub(super) fn crafting_shaped(
     id: String,
     value: &Value,
@@ -198,8 +198,8 @@ pub(super) fn cooking(
     })
 }
 
-/// `minecraft:stonecutting` has a single `ingredient`, a `count`, and a
-/// `result` that's a bare item id.
+/// `minecraft:stonecutting` has a single `ingredient`, a `count`, and a `result` that's a
+/// bare item id.
 pub(super) fn stonecutting(
     id: String,
     value: &Value,
@@ -233,8 +233,8 @@ pub(super) fn stonecutting(
     })
 }
 
-/// `minecraft:smithing_transform` has a `template`, `base` and `addition` as
-/// ingredients, and an object `result`.
+/// `minecraft:smithing_transform` has a `template`, `base` and `addition` as ingredients,
+/// and an object `result`.
 pub(super) fn smithing_transform(
     id: String,
     value: &Value,

@@ -9,10 +9,9 @@
 //! ```
 //! Starting from roots and walking backwards through producers.
 //!
-//! The other alternatives, i.e. starting from non-root recipes with no
-//! alive successors, marking them as dead, and iterating, maintains the
-//! self-sustaining junk-cycles like (stone dust <-> small stone dust).
-//! Propagating liveness prevents this.
+//! The other alternatives, i.e. starting from non-root recipes with no alive successors,
+//! marking them as dead, and iterating, maintains the self-sustaining junk-cycles like
+//! (stone dust <-> small stone dust). Propagating liveness prevents this.
 
 use core::iter::repeat_with;
 use std::collections::VecDeque;
@@ -82,8 +81,9 @@ impl Liveness {
 }
 
 /// Computes liveness.
-/// Reverse BFS from `attrs`'s roots, over `graph`'s recipes,
-/// and only following edges `edges` marked [`EdgeState::Propagate`].
+///
+/// Reverse BFS from `attrs`'s roots, over `graph`'s recipes, and only
+/// following edges `edges` marked [`EdgeState::Propagate`].
 ///
 /// # Panics
 ///
@@ -151,11 +151,11 @@ pub fn liveness(graph: &Graph, attrs: &NodeAttrs, edges: &EdgeStates) -> Livenes
     }
 }
 
-/// Naive reference liveness. Iterates the fixpoint equation to a fixed
-/// point by rescanning every recipe, instead of BFS.
-/// 
-/// This is only used to test [`liveness`] against a structurally different
-/// implementation of the equation.
+/// Naive reference liveness. Iterates the fixpoint equation to a fixed point by
+/// rescanning every recipe, instead of BFS.
+///
+/// This is only used to test [`liveness`] against a structurally different implementation
+/// of the equation.
 #[cfg(test)]
 fn naive_liveness(
     graph: &Graph,
@@ -211,7 +211,7 @@ fn naive_liveness(
 mod tests {
     use proptest::prelude::*;
 
-    use super::{Why, liveness, naive_liveness};
+    use super::{liveness, naive_liveness, Why};
     use crate::analysis::edges::{Cause, EdgeState, EdgeStates, NodeAttrs};
     use crate::analysis::proptest_support::arb_graph_attrs_edges;
     use crate::graph_dsl::parse;

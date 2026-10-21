@@ -6,9 +6,9 @@ use walkdir::WalkDir;
 
 use crate::ingest::RawFile;
 
-/// Reads every file under `root` into a [`RawFile`], with `path` relative to `root`
-/// and using `/` separators regardless of platform. Visits files in a deterministic
-/// (sorted) order.
+/// Reads every file under `root` into a [`RawFile`], with `path` relative to `root` and
+/// using `/` separators regardless of platform. Visits files in a deterministic (sorted)
+/// order.
 ///
 /// # Errors
 ///

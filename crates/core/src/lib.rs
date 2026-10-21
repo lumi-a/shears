@@ -13,8 +13,8 @@ pub mod analysis;
 ///
 /// Problems turn into [`ingest::Diagnostic`]s in the returned [`ingest::ParseReport`].
 ///
-/// Tags and the item/fluid registries are resolved first.
-/// Every recipe file can then be parsed to real ids without incomplete drafts.
+/// Tags and the item/fluid registries are resolved first. Every recipe file can then be
+/// parsed to real ids without incomplete drafts.
 pub mod ingest;
 
 /// Reads a raw export filesystem directory into [`ingest::RawFile`]s.

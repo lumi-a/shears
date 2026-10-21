@@ -52,8 +52,8 @@ impl ParseReport {
 
 /// A recipe, as read from its JSON, already resolved to real ids.
 ///
-/// The type is still a bare string, since the full set of types isn't
-/// known until every recipe file has been seen.
+/// The type is still a bare string, since the full set of types isn't known until every
+/// recipe file has been seen.
 #[derive(Debug)]
 struct RecipeDraft {
     /// The recipe id, taken from its file path.
@@ -68,8 +68,8 @@ struct RecipeDraft {
     ticks: Option<u32>,
 }
 
-/// The read-only lookups used while parsing the recipe files.
-/// This is built at the start from the registries and tags.
+/// The read-only lookups used while parsing the recipe files. This is built at the start
+/// from the registries and tags.
 struct Resolver<'a> {
     /// Every known item and fluid.
     item_index: &'a BTreeMap<String, ItemIndex>,
@@ -81,19 +81,18 @@ struct Resolver<'a> {
 
 /// A per-recipe-type parsing function.
 ///
-/// Inputs: Filepath, raw JSON, and resolver.
-/// Outputs: Draft xor diagnostic message.
+/// Inputs: Filepath, raw JSON, and resolver. Outputs: Draft xor diagnostic message.
 type RecipeAdapter = fn(String, &Value, &Resolver<'_>) -> Result<RecipeDraft, String>;
 
 /// Turns a raw export into a normalized graph and a parse report.
 ///
-/// Vanilla recipe types only, for now; everything else becomes an "unhandled recipe
-/// type" diagnostic rather than being silently dropped.
+/// Vanilla recipe types only, for now; everything else becomes an "unhandled recipe type"
+/// diagnostic rather than being silently dropped.
 ///
 /// # Panics
 ///
-/// Only if a single export has more than [`u32::MAX`] items, tags or recipe types,
-/// which isn't a real export this tool will ever see.
+/// Only if a single export has more than [`u32::MAX`] items, tags or recipe types, which
+/// isn't a real export this tool will ever see.
 #[must_use]
 #[expect(
     clippy::missing_inline_in_public_items,
@@ -309,8 +308,8 @@ fn build_items(
 
 /// Resolves a tag to its concrete, recursively-expanded members.
 ///
-/// Memoizes into `resolved`.
-/// Also guards against a reference cycle and reports it in `report`.
+/// Memoizes into `resolved`. Also guards against a reference cycle and reports it in
+/// `report`.
 fn resolve_tag(
     id: &str,
     raw: &BTreeMap<String, Vec<String>>,
@@ -433,8 +432,9 @@ fn resolve_output_id(id: &str, resolver: &Resolver<'_>) -> Result<ItemIndex, Str
 /// Parses every recognized recipe file, paired with its declared `type`.
 ///
 /// Unhandled types are counted in the report but don't produce a draft.
-/// TODO: Unhadled types should be handled and produce a draft, /AND/
-/// add a message to the report complaining about the unknown type.
+///
+/// TODO: Unhandled types should be handled and produce a draft, /AND/ add a message to
+/// the report complaining about the unknown type.
 fn parse_recipes(
     files: &[RawFile],
     resolver: &Resolver<'_>,

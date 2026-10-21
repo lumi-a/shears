@@ -1,7 +1,5 @@
-//!
-//! Item and recipe ids are meaningless placeholders (`"item000"`,
-//! `"recipe000"`, zero-padded so they stay lexicographically sorted
-//! regardless of count).
+//! Item and recipe ids are meaningless placeholders (`"item000"`, `"recipe000"`,
+//! zero-padded so they stay lexicographically sorted regardless of count).
 
 use std::collections::BTreeSet;
 

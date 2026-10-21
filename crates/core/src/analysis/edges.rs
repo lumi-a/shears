@@ -7,10 +7,10 @@ use crate::model::{Graph, ItemIndex, RecipeIndex};
 
 /// What a single `(recipe, output)` edge does for liveness propagation.
 ///
-/// TODO: This probably won't be sufficient later on. Later on, we'll probably want
-/// to have things like "This edge is only useful in LV, but not in MV+", or
-/// "This edge is only useful for builders, but not for technical aspects", and
-/// these states should be specified by the user, i.e. not known at compile-time.
+/// TODO: This probably won't be sufficient later on. Later on, we'll probably want to
+/// have things like "This edge is only useful in LV, but not in MV+", or "This edge is
+/// only useful for builders, but not for technical aspects", and these states should be
+/// specified by the user, i.e. not known at compile-time.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum EdgeState {
     /// Normal: an alive output on this edge makes the recipe's inputs alive too.

@@ -1,5 +1,4 @@
-//! Annotate first, then compute
-//! (edge states, liveness, byproducts, open competitions).
+//! Annotate first, then compute (edge states, liveness, byproducts, open competitions).
 
 /// Derived per-edge and per-node state, and the reasons behind it.
 pub mod edges;

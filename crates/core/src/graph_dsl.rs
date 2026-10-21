@@ -1,18 +1,11 @@
 //! A tiny textual DSL for hand-written test graphs. Test-only.
 //!
-//! ```text
-//! root concrete
-//! mix:    stone_dust + water -> concrete
-//! pack:   4 small_stone_dust -> stone_dust
-//! unpack: stone_dust -> 4 small_stone_dust
-//! ```
+//! ```text root concrete mix:    stone_dust + water -> concrete pack:   4
+//! small_stone_dust -> stone_dust unpack: stone_dust -> 4 small_stone_dust ```
 //!
-//! One `root` line lists root items, space-separated.
-//! Every other non-blank line is a recipe:
-//! A name, `:`, `+`-separated inputs, `->`, then `+`-separated outputs.
+//! One `root` line lists root items, space-separated. Every other non-blank line is a recipe: A name, `:`, `+`-separated inputs, `->`, then `+`-separated outputs.
 //!
-//! Each input or output is `[count] item`, the count defaulting to 1.
-//! Lines are trimmed before parsing.
+//! Each input or output is `[count] item`, the count defaulting to 1. Lines are trimmed before parsing.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -69,9 +62,8 @@ fn parse_term(term: &str) -> RawTerm {
 
 /// Parses the `+`-separated terms on one side of a recipe line.
 ///
-/// Empty (a recipe with no inputs, or no outputs) is valid: a pure sink or a
-/// spontaneous producer. `"".split('+')` would otherwise yield one empty
-/// term instead of zero.
+/// Empty (a recipe with no inputs, or no outputs) is valid: a pure sink or a spontaneous
+/// producer. `"".split('+')` would otherwise yield one empty term instead of zero.
 fn parse_terms(side: &str) -> Vec<RawTerm> {
     let trimmed = side.trim();
     if trimmed.is_empty() {
