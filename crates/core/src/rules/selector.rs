@@ -14,7 +14,7 @@
 
 use fancy_regex::Regex;
 
-use crate::model::{Graph, Item, ItemIndex, ItemKind, Recipe, RecipeIndex};
+use crate::model::{Graph, ItemIndex, ItemKind, RecipeIndex};
 
 /// Which kind of thing a [`Selector`] is being matched against.
 ///
@@ -282,34 +282,6 @@ fn tag_index(graph: &Graph, tag: &str) -> Option<u32> {
         .map(|position| u32::try_from(position).expect("fewer than u32::MAX tags"))
 }
 
-/// The item at `item`.
-///
-/// TODO: This should just be a function on Graph.
-///
-/// # Panics
-///
-/// If `item` is out of bounds for `graph`.
-fn item_at(graph: &Graph, item: ItemIndex) -> &Item {
-    graph
-        .items()
-        .get(item.index())
-        .expect("item index in bounds for this graph")
-}
-
-/// The recipe at `recipe`.
-///
-/// TODO: This should just be a function on Graph.
-///
-/// # Panics
-///
-/// If `recipe` is out of bounds for `graph`.
-fn recipe_at(graph: &Graph, recipe: RecipeIndex) -> &Recipe {
-    graph
-        .recipes()
-        .get(recipe.index())
-        .expect("recipe index in bounds for this graph")
-}
-
 /// Whether `item` matches `selector`.
 ///
 /// # Panics
@@ -324,7 +296,7 @@ fn recipe_at(graph: &Graph, recipe: RecipeIndex) -> &Recipe {
     reason = "parse() enforces selector/context agreement before this ever runs"
 )]
 pub fn matches_item(selector: &Selector, graph: &Graph, item: ItemIndex) -> bool {
-    let subject = item_at(graph, item);
+    let subject = graph.item(item);
     match selector {
         Selector::All(clauses) => clauses
             .iter()
@@ -359,7 +331,7 @@ pub fn matches_item(selector: &Selector, graph: &Graph, item: ItemIndex) -> bool
     reason = "parse() enforces selector/context agreement before this ever runs"
 )]
 pub fn matches_recipe(selector: &Selector, graph: &Graph, recipe: RecipeIndex) -> bool {
-    let subject = recipe_at(graph, recipe);
+    let subject = graph.recipe(recipe);
     match selector {
         Selector::All(clauses) => clauses
             .iter()

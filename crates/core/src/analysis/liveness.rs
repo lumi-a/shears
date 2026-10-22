@@ -125,10 +125,7 @@ pub fn liveness(graph: &Graph, attrs: &NodeAttrs, edges: &EdgeStates) -> Livenes
             }
             alive_recipe.insert(recipe.index());
 
-            let recipe_data = graph
-                .recipes()
-                .get(recipe.index())
-                .expect("recipe index in bounds for this graph");
+            let recipe_data = graph.recipe(recipe);
             for slot in recipe_data.inputs() {
                 for &member in slot.members() {
                     if alive_item.contains(member.index()) {

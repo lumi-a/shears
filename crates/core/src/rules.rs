@@ -91,12 +91,7 @@ impl Rule {
             }
             Action::Propagate(state) => {
                 for_each_matching_recipe(graph, &self.selector, |recipe| {
-                    let output_count = graph
-                        .recipes()
-                        .get(recipe.index())
-                        .expect("recipe index in bounds for this graph")
-                        .outputs()
-                        .len();
+                    let output_count = graph.recipe(recipe).outputs().len();
                     for output_position in 0..output_count {
                         let output = u8::try_from(output_position)
                             .expect("fewer than u8::MAX outputs per recipe");

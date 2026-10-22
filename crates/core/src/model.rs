@@ -373,6 +373,32 @@ impl Graph {
         &self.recipes
     }
 
+    /// The item at `item`.
+    ///
+    /// # Panics
+    ///
+    /// If `item` is out of bounds for this graph.
+    #[inline]
+    #[must_use]
+    pub fn item(&self, item: ItemIndex) -> &Item {
+        self.items
+            .get(item.index())
+            .expect("item index in bounds for this graph")
+    }
+
+    /// The recipe at `recipe`.
+    ///
+    /// # Panics
+    ///
+    /// If `recipe` is out of bounds for this graph.
+    #[inline]
+    #[must_use]
+    pub fn recipe(&self, recipe: RecipeIndex) -> &Recipe {
+        self.recipes
+            .get(recipe.index())
+            .expect("recipe index in bounds for this graph")
+    }
+
     /// Interned tag names. These are indexed by [`Item::tags`] and [`Slot::tag`].
     #[inline]
     #[must_use]
@@ -393,6 +419,7 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::{Graph, Item, ItemIndex, ItemKind, Output, Recipe, Slot};
+    use crate::graph_dsl;
 
     #[test]
     fn graph_json_round_trip_is_stable() {
@@ -438,6 +465,38 @@ mod tests {
             serde_json::to_string(&deserialized).expect("serializing the deserialized Graph again");
 
         assert_eq!(first, second, "graph.json should round-trip identically");
+    }
+
+    #[test]
+    fn item_returns_the_item_at_that_index() {
+        let (graph, _roots) = graph_dsl::parse("mix: stone_dust -> concrete");
+
+        // Sorted item order: concrete=0, stone_dust=1.
+        assert_eq!(graph.item(ItemIndex::new(0)).id(), "concrete");
+        assert_eq!(graph.item(ItemIndex::new(1)).id(), "stone_dust");
+    }
+
+    #[test]
+    #[should_panic(expected = "item index in bounds")]
+    fn item_panics_on_an_out_of_bounds_index() {
+        let (graph, _roots) = graph_dsl::parse("mix: stone_dust -> concrete");
+
+        let _item = graph.item(ItemIndex::new(2));
+    }
+
+    #[test]
+    fn recipe_returns_the_recipe_at_that_index() {
+        let (graph, _roots) = graph_dsl::parse("mix: stone_dust -> concrete");
+
+        assert_eq!(graph.recipe(super::RecipeIndex::new(0)).id(), "mix");
+    }
+
+    #[test]
+    #[should_panic(expected = "recipe index in bounds")]
+    fn recipe_panics_on_an_out_of_bounds_index() {
+        let (graph, _roots) = graph_dsl::parse("mix: stone_dust -> concrete");
+
+        let _recipe = graph.recipe(super::RecipeIndex::new(1));
     }
 
     proptest::proptest! {
