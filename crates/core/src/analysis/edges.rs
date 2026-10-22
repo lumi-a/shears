@@ -47,11 +47,15 @@ pub enum Cause {
     Pseudo,
     /// A rule from `rules.toml`.
     ///
-    /// `file` and `index` locate which rule, for `explain::why`.
+    /// `file`, `kind` and `index` locate which rule, for `explain::why`. `rules.toml`
+    /// has two separate arrays (`[[item-rule]]`, `[[recipe-rule]]`), so `index` alone
+    /// (a position within just one of those arrays) is ambiguous without `kind`.
     Rule {
         /// Which rules file, in load order (presets first, then local).
         file: u16,
-        /// The rule's position within that file.
+        /// Which of that file's two rule arrays (item or recype) this came from.
+        kind: RuleKind,
+        /// The rule's position within that array.
         index: u32,
     },
     /// A decision from `decisions.toml`, by its position in the file.
@@ -59,6 +63,19 @@ pub enum Cause {
         /// The decision's position in `decisions.toml`.
         index: u32,
     },
+}
+
+/// Which of a rules file's two rule arrays a [`Cause::Rule`] came from.
+///
+/// TODO: I feel like we have this idiom (Item, Recipe) a lot throughout the codebase, but
+/// I may be wrong. If we have it a lot, maybe we should do something about that, but then
+/// again maybe not.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RuleKind {
+    /// From an item-targeting rule (`[[item-rule]]`).
+    Item,
+    /// From a recipe-targeting rule (`[[recipe-rule]]`).
+    Recipe,
 }
 
 /// For each `(recipe, output)` edge, a state and corresponding cause.
