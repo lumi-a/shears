@@ -12,18 +12,17 @@
 //!
 //! ```toml
 //! # AND: both must match.
-//! match = { mod = "gtceu", id = "/_battery$/" }
+//! filter = { mod = "gtceu", id = "/_battery$/" }
 //!
 //! # OR: either must match.
-//! match = [ { id = "minecraft:dirt" }, { id = "minecraft:coarse_dirt" } ]
+//! filter = [ { id = "minecraft:dirt" }, { id = "minecraft:coarse_dirt" } ]
 //!
 //! # NOT: negates the nested selector.
-//! match = { not = { mod = "minecraft" } }
+//! filter = { not = { mod = "minecraft" } }
 //!
-//! # input/output/catalyst take a nested selector, matched against the items in a
-//! # recipe's matching slots, not the recipe itself.
-//! match = { type = "gtceu:extruder", catalyst = { id = "gtceu:wire_extruder_mold" } }
-//! match = { input = { tag = "forge:dusts/rare_earth" } }
+//! # input/output/catalyst take a nested selector.
+//! filter = { type = "gtceu:extruder", catalyst = { id = "gtceu:wire_extruder_mold" } }
+//! filter = { input = { tag = "forge:dusts/rare_earth" } }
 //! ```
 
 use fancy_regex::Regex;
@@ -402,8 +401,8 @@ mod tests {
     fn selector(toml: &str, context: Context) -> Selector {
         let value: toml::Value = toml::from_str(toml).expect("valid test TOML");
         let wrapped = value
-            .get("match")
-            .expect("test TOML has a top-level `match` key")
+            .get("filter")
+            .expect("test TOML has a top-level `filter` key")
             .clone();
         parse(&wrapped, context).expect("valid test selector")
     }
@@ -411,7 +410,7 @@ mod tests {
     #[test]
     fn exact_id_matches_only_that_id() {
         let (graph, _roots) = parse_graph("mix: stone_dust -> concrete");
-        let select = selector(r#"match = { id = "concrete" }"#, Context::Item);
+        let select = selector(r#"filter = { id = "concrete" }"#, Context::Item);
 
         assert!(matches_item(&select, &graph, ItemIndex::new(0)));
         assert!(!matches_item(&select, &graph, ItemIndex::new(1)));
@@ -420,7 +419,7 @@ mod tests {
     #[test]
     fn regexes_are_unanchored_and_match_anywhere_in_the_id() {
         let (graph, _roots) = parse_graph("mix: coarse_dirt + dirt -> concrete");
-        let select = selector(r#"match = { id = "/dirt/" }"#, Context::Item);
+        let select = selector(r#"filter = { id = "/dirt/" }"#, Context::Item);
 
         // Sorted item order: coarse_dirt=0, concrete=1.
         assert!(
@@ -434,7 +433,7 @@ mod tests {
     #[test]
     fn slash_wrapped_id_is_a_regex() {
         let (graph, _roots) = parse_graph("mix: gtceu:dust_tiny -> gtceu:dust_small");
-        let select = selector(r#"match = { id = "/^gtceu:dust_/" }"#, Context::Item);
+        let select = selector(r#"filter = { id = "/^gtceu:dust_/" }"#, Context::Item);
 
         // Sorted item order: gtceu:dust_small=0, gtceu:dust_tiny=1.
         assert!(matches_item(&select, &graph, ItemIndex::new(0)));
@@ -444,7 +443,7 @@ mod tests {
     #[test]
     fn mod_matches_the_namespace_only() {
         let (graph, _roots) = parse_graph("mix: minecraft:dirt -> gtceu:dust");
-        let select = selector(r#"match = { mod = "gtceu" }"#, Context::Item);
+        let select = selector(r#"filter = { mod = "gtceu" }"#, Context::Item);
 
         // Sorted item order: gtceu:dust=0, minecraft:dirt=1.
         assert!(matches_item(&select, &graph, ItemIndex::new(0)));
@@ -455,11 +454,11 @@ mod tests {
     fn object_is_and_array_is_or() {
         let (graph, _roots) = parse_graph("mix: minecraft:dirt + minecraft:sand -> gtceu:dust");
         let and_select = selector(
-            r#"match = { mod = "minecraft", id = "/dirt/" }"#,
+            r#"filter = { mod = "minecraft", id = "/dirt/" }"#,
             Context::Item,
         );
         let or_select = selector(
-            r#"match = [ { id = "minecraft:dirt" }, { id = "minecraft:sand" } ]"#,
+            r#"filter = [ { id = "minecraft:dirt" }, { id = "minecraft:sand" } ]"#,
             Context::Item,
         );
 
@@ -473,7 +472,7 @@ mod tests {
     #[test]
     fn not_negates_the_inner_selector() {
         let (graph, _roots) = parse_graph("mix: minecraft:dirt -> minecraft:sand");
-        let select = selector(r#"match = { not = { mod = "minecraft" } }"#, Context::Item);
+        let select = selector(r#"filter = { not = { mod = "minecraft" } }"#, Context::Item);
 
         assert!(!matches_item(&select, &graph, ItemIndex::new(0)));
         assert!(!matches_item(&select, &graph, ItemIndex::new(1)));
@@ -495,7 +494,7 @@ mod tests {
             vec!["forge:ingots".to_owned()],
             Vec::new(),
         );
-        let select = selector(r#"match = { tag = "forge:ingots" }"#, Context::Item);
+        let select = selector(r#"filter = { tag = "forge:ingots" }"#, Context::Item);
 
         assert!(matches_item(&select, &graph, ItemIndex::new(0)));
         assert!(!matches_item(&select, &graph, ItemIndex::new(1)));
@@ -504,8 +503,8 @@ mod tests {
     #[test]
     fn tag_on_a_recipe_selector_is_an_error() {
         let value: toml::Value =
-            toml::from_str(r#"match = { tag = "forge:ingots" }"#).expect("valid test TOML");
-        let wrapped = value.get("match").expect("has match").clone();
+            toml::from_str(r#"filter = { tag = "forge:ingots" }"#).expect("valid test TOML");
+        let wrapped = value.get("filter").expect("has filter").clone();
 
         let error =
             parse(&wrapped, Context::Recipe).expect_err("tag doesn't apply to a recipe selector");
@@ -535,7 +534,7 @@ mod tests {
             Vec::new(),
             Vec::new(),
         );
-        let select = selector(r#"match = { type = "fluid" }"#, Context::Item);
+        let select = selector(r#"filter = { type = "fluid" }"#, Context::Item);
 
         assert!(matches_item(&select, &graph, ItemIndex::new(0)));
         assert!(!matches_item(&select, &graph, ItemIndex::new(1)));
@@ -561,7 +560,7 @@ mod tests {
             Vec::new(),
             vec!["gtceu:extruder".to_owned()],
         );
-        let select = selector(r#"match = { type = "gtceu:extruder" }"#, Context::Recipe);
+        let select = selector(r#"filter = { type = "gtceu:extruder" }"#, Context::Recipe);
 
         assert!(matches_recipe(&select, &graph, RecipeIndex::new(0)));
     }
@@ -570,7 +569,7 @@ mod tests {
     fn input_matches_recipes_with_a_matching_input_member() {
         let (graph, _roots) = parse_graph("mix: stone_dust + water -> concrete");
         let select = selector(
-            r#"match = { input = { id = "stone_dust" } }"#,
+            r#"filter = { input = { id = "stone_dust" } }"#,
             Context::Recipe,
         );
 
@@ -581,7 +580,7 @@ mod tests {
     fn output_matches_recipes_with_a_matching_output() {
         let (graph, _roots) = parse_graph("mix: stone_dust + water -> concrete");
         let select = selector(
-            r#"match = { output = { id = "concrete" } }"#,
+            r#"filter = { output = { id = "concrete" } }"#,
             Context::Recipe,
         );
 
@@ -612,11 +611,11 @@ mod tests {
             vec!["gtceu:extruder".to_owned()],
         );
         let select = selector(
-            r#"match = { catalyst = { id = "gtceu:mold" } }"#,
+            r#"filter = { catalyst = { id = "gtceu:mold" } }"#,
             Context::Recipe,
         );
         let not_a_catalyst = selector(
-            r#"match = { catalyst = { id = "gtceu:ingot" } }"#,
+            r#"filter = { catalyst = { id = "gtceu:ingot" } }"#,
             Context::Recipe,
         );
 
@@ -631,8 +630,8 @@ mod tests {
     #[test]
     fn unknown_key_is_an_error() {
         let value: toml::Value =
-            toml::from_str(r#"match = { nonsense = "x" }"#).expect("valid test TOML");
-        let wrapped = value.get("match").expect("has match").clone();
+            toml::from_str(r#"filter = { nonsense = "x" }"#).expect("valid test TOML");
+        let wrapped = value.get("filter").expect("has filter").clone();
 
         let error =
             parse(&wrapped, Context::Item).expect_err("nonsense is not a recognized selector key");

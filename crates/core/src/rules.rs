@@ -1,48 +1,30 @@
 //! Rules set local analysis inputs from `rules.toml`.
 //!
 //! Ordered selector -> action pairs: roots, propagation, stage and decomposition. The
-//! last match wins per attribute. Every rule must carry a reason, for the report's sake.
+//! last rule to match wins per attribute. Every rule must carry a reason, for the
+//! report's sake.
 //!
-//! TODO: I don't particularly like the name of the "set" key. Considering `set` is only
-//! allowed to do one action at the moment, could we do a better syntax for this, that
-//! isn't a table? E.g. instead `set = "root"` (which turns on the root) or `set =
-//! "unroot"` or `set = "world_source"`. That way, we also enforce only one action per
-//! match rule. And perhaps rename `set` to `action` or something. Maybe if we're really
-//! clever, we can rename all of the primary keys (are we sure that those three are all we
-//! need?) to use the exact same amount of characters, so that it all aligns satisfyingly
-//! in the TOML file. I should also note that I don't like the wording of "root" very
-//! much. It depends on your perception of the recipe-item-graph, and in the natural
-//! perception (recipes point to their outputs, inputs point to their recipes), the things
-//! we call "roots" are actually leaves, it's just that we do the BFS in reverse. At the
-//! same time, I would also strongly advise against calling them leaves, because that'd
-//! cause confusion in the other direction. One possible term may be "terminal_node", but
-//! that's unwieldy and doesn't really get the intent across to the user. Perhaps
-//! something like "useful" is a good name for it? Perhaps we should rephrase the whole
-//! codebase that way, so that terminal items are "useful", and "alive" items and recipes
-//! are called [some synonym of useful].
-//!
-//! TODO: The raw ore example should be done with a tag instead. By the way, should we
-//! just have special syntax for some things like mod filters or tag filters? E.g. in an
-//! EMI search, `@project` would only match things from projectred, and `#raw` would only
-//! match items/fluids with the string `raw` in any of their tags, like
-//! `#forge:raw_materials`. But that would probably pollute `match` a lot... Maybe worth
-//! thinking about if KubeJS also uses the `#` and `@` syntax? Does it?
+//! TODO: Still not happy with "root" as the user-facing word for this. In the natural
+//! perception of the recipe-item graph (recipes point to their outputs, inputs point to
+//! their recipes), the things we call "roots" are actually leaves, it's just that we do
+//! the BFS in reverse, but calling them leaves instead would just confuse in the other
+//! direction. Perhaps "useful", "wanted", "needed" are better?
 //!
 //! ```toml
 //! [[rule]]
 //! reason = "batteries are useful as inventory items"
-//! match = { id = "/_battery$/" }
-//! set = { root = true }
+//! filter = { id = "/_battery$/" }
+//! action = { root = true }
 //!
 //! [[rule]]
 //! reason = "raw ores are obtainable from the world"
-//! match = { id = "/^gtceu:raw_/" }
-//! set = { world_source = true }
+//! filter = { tag = "forge:raw_materials" }
+//! action = { world_source = true }
 //!
 //! [[rule]]
 //! reason = "recycling shouldn't keep anything else alive"
-//! match = { type = "gtceu:macerator" }
-//! set = { propagate = "drop" }
+//! filter = { type = "gtceu:macerator" }
+//! action = { propagate = "drop" }
 //! ```
 //!
 //! TODO: Describe the above examples better.
@@ -183,9 +165,10 @@ impl RuleSet {
     ///
     /// # Errors
     ///
-    /// If the document isn't valid TOML, a rule is missing `reason`, `match` or `set`,
-    /// `set` doesn't contain exactly one recognized action, or the selector is invalid
-    /// for that action's context (see the [module docs](self) for what's in scope).
+    /// If the document isn't valid TOML, a rule is missing `reason`, `filter` or
+    /// `action`, `action` doesn't contain exactly one recognized action, or the selector
+    /// is invalid for that action's context (see the [module docs](self) for what's in
+    /// scope).
     #[inline]
     pub fn parse(source: &str) -> Result<Self, RuleError> {
         let document: toml::Value = toml::from_str(source)?;
@@ -249,16 +232,16 @@ fn parse_rule(entry: &toml::Value) -> Result<Rule, RuleError> {
         .ok_or(RuleError::MissingField { field: "reason" })?
         .to_owned();
 
-    let set = table
-        .get("set")
+    let action_table = table
+        .get("action")
         .and_then(toml::Value::as_table)
-        .ok_or(RuleError::MissingField { field: "set" })?;
-    let action = parse_action(set)?;
+        .ok_or(RuleError::MissingField { field: "action" })?;
+    let action = parse_action(action_table)?;
 
-    let match_value = table
-        .get("match")
-        .ok_or(RuleError::MissingField { field: "match" })?;
-    let selector = selector::parse(match_value, action.context())?;
+    let filter_value = table
+        .get("filter")
+        .ok_or(RuleError::MissingField { field: "filter" })?;
+    let selector = selector::parse(filter_value, action.context())?;
 
     Ok(Rule {
         reason,
@@ -267,16 +250,19 @@ fn parse_rule(entry: &toml::Value) -> Result<Rule, RuleError> {
     })
 }
 
-/// Parses a rule's `set` table into exactly one [`Action`].
-fn parse_action(set: &toml::Table) -> Result<Action, RuleError> {
+/// Parses a rule's `action` table into exactly one [`Action`].
+fn parse_action(action_table: &toml::Table) -> Result<Action, RuleError> {
     const KNOWN: [&str; 3] = ["root", "world_source", "propagate"];
 
-    if let Some(unknown) = set.keys().find(|key| !KNOWN.contains(&key.as_str())) {
+    if let Some(unknown) = action_table
+        .keys()
+        .find(|key| !KNOWN.contains(&key.as_str()))
+    {
         return Err(RuleError::UnknownAction(unknown.clone()));
     }
 
     let mut actions = Vec::new();
-    if let Some(value) = set.get("root") {
+    if let Some(value) = action_table.get("root") {
         actions.push(Action::Root(value.as_bool().ok_or(
             RuleError::WrongShape {
                 key: "root",
@@ -284,7 +270,7 @@ fn parse_action(set: &toml::Table) -> Result<Action, RuleError> {
             },
         )?));
     }
-    if let Some(value) = set.get("world_source") {
+    if let Some(value) = action_table.get("world_source") {
         actions.push(Action::WorldSource(value.as_bool().ok_or(
             RuleError::WrongShape {
                 key: "world_source",
@@ -292,7 +278,7 @@ fn parse_action(set: &toml::Table) -> Result<Action, RuleError> {
             },
         )?));
     }
-    if let Some(value) = set.get("propagate") {
+    if let Some(value) = action_table.get("propagate") {
         actions.push(Action::Propagate(parse_propagate(value)?));
     }
 
@@ -342,17 +328,17 @@ pub enum RuleError {
         /// The field that's missing.
         field: &'static str,
     },
-    /// A `set` table had a key that isn't a recognized action.
-    #[error("unknown action `{0}` in `set`")]
+    /// An `action` table had a key that isn't a recognized action.
+    #[error("unknown action `{0}` in `action`")]
     UnknownAction(String),
-    /// A `set` table had none of the recognized actions.
-    #[error("`set` has no recognized action")]
+    /// An `action` table had none of the recognized actions.
+    #[error("`action` has no recognized action")]
     EmptyAction,
-    /// A `set` table had more than one recognized action; a rule sets exactly one.
+    /// An `action` table had more than one recognized action; a rule sets exactly one.
     ///
     /// TODO: Should this really be an error? Why? To prevent user error? And because the
     /// scenarios in which you'd want to execute multiple actions are very rare?
-    #[error("`set` has more than one action")]
+    #[error("`action` has more than one action")]
     MultipleActions,
     /// The selector itself was invalid.
     #[error(transparent)]
@@ -383,8 +369,8 @@ mod tests {
             r#"
             [[rule]]
             reason = "batteries are useful"
-            match  = { id = "/battery$/" }
-            set    = { root = true }
+            filter = { id = "/battery$/" }
+            action = { root = true }
             "#,
         )
         .expect("valid rules");
@@ -409,8 +395,8 @@ mod tests {
             r#"
             [[rule]]
             reason = "don't want this one after all"
-            match  = { id = "concrete" }
-            set    = { root = false }
+            filter = { id = "concrete" }
+            action = { root = false }
             "#,
         )
         .expect("valid rules");
@@ -430,8 +416,8 @@ mod tests {
             r#"
             [[rule]]
             reason = "ores spawn in the world"
-            match  = { id = "/_ore$/" }
-            set    = { world_source = true }
+            filter = { id = "/_ore$/" }
+            action = { world_source = true }
             "#,
         )
         .expect("valid rules");
@@ -452,8 +438,8 @@ mod tests {
             r#"
             [[rule]]
             reason = "recycling, drop it"
-            match  = { id = "macerate" }
-            set    = { propagate = "drop" }
+            filter = { id = "macerate" }
+            action = { propagate = "drop" }
             "#,
         )
         .expect("valid rules");
@@ -473,13 +459,13 @@ mod tests {
             r#"
             [[rule]]
             reason = "preset: every dust is a root"
-            match  = { id = "/dust/" }
-            set    = { root = true }
+            filter = { id = "/dust/" }
+            action = { root = true }
 
             [[rule]]
             reason = "local: actually, not this one"
-            match  = { id = "stone_dust" }
-            set    = { root = false }
+            filter = { id = "stone_dust" }
+            action = { root = false }
             "#,
         )
         .expect("valid rules");
@@ -497,8 +483,8 @@ mod tests {
         let result = RuleSet::parse(
             r#"
             [[rule]]
-            match = { id = "x" }
-            set   = { root = true }
+            filter = { id = "x" }
+            action = { root = true }
             "#,
         );
 
@@ -516,15 +502,15 @@ mod tests {
             r#"
             [[rule]]
             reason = "nonsense"
-            match  = { id = "x" }
-            set    = { root = true, propagate = "drop" }
+            filter = { id = "x" }
+            action = { root = true, propagate = "drop" }
             "#,
         );
 
-        let error = result.expect_err("root (item) and propagate (recipe) don't mix");
+        let error = result.expect_err("root and propagate together is more than one action");
         assert!(matches!(
             error,
-            RuleError::InRule { position: 0, source } if matches!(*source, RuleError::MixedContexts)
+            RuleError::InRule { position: 0, source } if matches!(*source, RuleError::MultipleActions)
         ));
     }
 
@@ -534,8 +520,8 @@ mod tests {
             r#"
             [[rule]]
             reason = "tag doesn't apply to a recipe-targeting rule"
-            match  = { tag = "forge:tools" }
-            set    = { propagate = "drop" }
+            filter = { tag = "forge:tools" }
+            action = { propagate = "drop" }
             "#,
         );
 
