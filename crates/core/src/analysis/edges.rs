@@ -40,9 +40,10 @@ pub enum Show {
 pub enum Cause {
     /// Nothing has touched this edge/item.
     Default,
-    /// A pseudo-item root.
-    ///
-    /// TODO: Do we ever actually need this?
+    /// A pseudo-item, marked wanted directly (e.g. the EU pseudo-item for generator
+    /// fuel). Confirmed needed: `implementation-plan.md`'s `analyze()` pseudocode marks
+    /// these wanted as their own step before the rules loop runs, separate from
+    /// `Cause::Rule`.
     Pseudo,
     /// A rule from `rules.toml`.
     ///
@@ -156,10 +157,12 @@ impl EdgeStates {
 /// Material and form per item, and per-recipe attributes like [`Show`].
 #[derive(Clone, Debug)]
 pub struct NodeAttrs {
-    /// `root.contains(item.index())`: whether `item` is a liveness root.
-    root: FixedBitSet,
-    /// `root_cause[item.index()]` is why `item` is a root, if it is one.
-    root_cause: Vec<Option<Cause>>,
+    /// `wanted.contains(item.index())`: whether `item` is wanted directly (opt-in,
+    /// asserted by a rule or preset), as opposed to merely needed because something
+    /// wanted depends on it.
+    wanted: FixedBitSet,
+    /// `wanted_cause[item.index()]` is why `item` is wanted, if it is.
+    wanted_cause: Vec<Option<Cause>>,
     /// `world_source.contains(item.index())`: whether `item` is obtainable
     /// in-world (ore, log, gravel, mob drop, ...).
     ///
@@ -169,72 +172,72 @@ pub struct NodeAttrs {
 }
 
 impl NodeAttrs {
-    /// Nothing is a root or a world source yet.
+    /// Nothing is wanted or a world source yet.
     #[inline]
     #[must_use]
     pub fn defaults(graph: &Graph) -> Self {
         let item_count = graph.items().len();
         Self {
-            root: FixedBitSet::with_capacity(item_count),
-            root_cause: vec![None; item_count],
+            wanted: FixedBitSet::with_capacity(item_count),
+            wanted_cause: vec![None; item_count],
             world_source: FixedBitSet::with_capacity(item_count),
         }
     }
 
-    /// Whether `item` is currently a liveness root.
+    /// Whether `item` is currently wanted directly.
     ///
     /// # Panics
     ///
     /// If `item` is out of bounds for the graph this was built from.
     #[inline]
     #[must_use]
-    pub fn is_root(&self, item: ItemIndex) -> bool {
-        self.root.contains(item.index())
+    pub fn is_wanted(&self, item: ItemIndex) -> bool {
+        self.wanted.contains(item.index())
     }
 
-    /// Why `item` is a root, if it is one.
+    /// Why `item` is wanted, if it is.
     #[inline]
     #[must_use]
-    pub fn root_cause(&self, item: ItemIndex) -> Option<&Cause> {
-        self.root_cause.get(item.index()).and_then(Option::as_ref)
+    pub fn wanted_cause(&self, item: ItemIndex) -> Option<&Cause> {
+        self.wanted_cause.get(item.index()).and_then(Option::as_ref)
     }
 
-    /// Every item currently marked as a liveness root.
+    /// Every item currently marked wanted directly.
     ///
     /// # Panics
     ///
     /// If this graph has more than `u32::MAX` items.
     #[inline]
-    pub fn roots(&self) -> impl Iterator<Item = ItemIndex> + '_ {
-        self.root.ones().map(|position| {
+    pub fn wanted_items(&self) -> impl Iterator<Item = ItemIndex> + '_ {
+        self.wanted.ones().map(|position| {
             ItemIndex::new(u32::try_from(position).expect("fewer than u32::MAX items"))
         })
     }
 
-    /// Marks `item` as a liveness root, and why.
+    /// Marks `item` as wanted directly, and why.
     ///
     /// # Panics
     ///
     /// If `item` is out of bounds for the graph this was built from.
     #[inline]
-    pub fn set_root(&mut self, item: ItemIndex, cause: Cause) {
-        self.root.insert(item.index());
+    pub fn set_wanted(&mut self, item: ItemIndex, cause: Cause) {
+        self.wanted.insert(item.index());
         *self
-            .root_cause
+            .wanted_cause
             .get_mut(item.index())
             .expect("item index in bounds for this graph") = Some(cause);
     }
 
-    /// Unmarks `item` as a liveness root, and clears its cause.
+    /// Unmarks `item` as wanted directly, and clears its cause.
     ///
     /// # Panics
     ///
     /// If `item` is out of bounds for the graph this was built from.
     #[inline]
-    pub fn clear_root(&mut self, item: ItemIndex) {
-        self.root.remove(item.index());
+    pub fn clear_wanted(&mut self, item: ItemIndex) {
+        self.wanted.remove(item.index());
         *self
-            .root_cause
+            .wanted_cause
             .get_mut(item.index())
             .expect("item index in bounds for this graph") = None;
     }
@@ -334,7 +337,7 @@ mod tests {
     }
 
     #[test]
-    fn defaults_root_and_source_nothing_even_producerless_items() {
+    fn defaults_wanted_and_source_nothing_even_producerless_items() {
         let (graph, _roots) = parse(
             "
             root concrete
@@ -344,8 +347,8 @@ mod tests {
         let attrs = NodeAttrs::defaults(&graph);
 
         // Sorted item order: concrete=0, stone_dust=1, water=2.
-        assert!(!attrs.is_root(ItemIndex::new(0)));
-        assert!(attrs.root_cause(ItemIndex::new(0)).is_none());
+        assert!(!attrs.is_wanted(ItemIndex::new(0)));
+        assert!(attrs.wanted_cause(ItemIndex::new(0)).is_none());
 
         // stone_dust and water have no producer in this fixture.
         assert!(!attrs.is_world_source(ItemIndex::new(0)));
@@ -371,7 +374,7 @@ mod tests {
     }
 
     #[test]
-    fn set_root_marks_the_item_and_records_the_cause() {
+    fn set_wanted_marks_the_item_and_records_the_cause() {
         let (graph, _roots) = parse(
             "
             root concrete
@@ -380,21 +383,21 @@ mod tests {
         );
         let mut attrs = NodeAttrs::defaults(&graph);
 
-        attrs.set_root(ItemIndex::new(1), Cause::Pseudo);
+        attrs.set_wanted(ItemIndex::new(1), Cause::Pseudo);
 
-        assert!(attrs.is_root(ItemIndex::new(1)));
+        assert!(attrs.is_wanted(ItemIndex::new(1)));
         assert!(matches!(
-            attrs.root_cause(ItemIndex::new(1)),
+            attrs.wanted_cause(ItemIndex::new(1)),
             Some(Cause::Pseudo)
         ));
         assert!(
-            !attrs.is_root(ItemIndex::new(0)),
-            "unrelated items stay unrooted"
+            !attrs.is_wanted(ItemIndex::new(0)),
+            "unrelated items stay unwanted"
         );
     }
 
     #[test]
-    fn clear_root_unmarks_the_item_and_its_cause() {
+    fn clear_wanted_unmarks_the_item_and_its_cause() {
         let (graph, _roots) = parse(
             "
             root concrete
@@ -402,12 +405,12 @@ mod tests {
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
-        attrs.set_root(ItemIndex::new(1), Cause::Pseudo);
+        attrs.set_wanted(ItemIndex::new(1), Cause::Pseudo);
 
-        attrs.clear_root(ItemIndex::new(1));
+        attrs.clear_wanted(ItemIndex::new(1));
 
-        assert!(!attrs.is_root(ItemIndex::new(1)));
-        assert!(attrs.root_cause(ItemIndex::new(1)).is_none());
+        assert!(!attrs.is_wanted(ItemIndex::new(1)));
+        assert!(attrs.wanted_cause(ItemIndex::new(1)).is_none());
     }
 
     #[test]

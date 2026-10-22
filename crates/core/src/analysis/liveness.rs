@@ -1,19 +1,20 @@
-//! The liveness computation.
+//! The liveness computation: which items and recipes are needed.
 //!
 //! ```txt
-//! alive(i) ⟺
-//!   i ∈ roots OR
+//! needed(i) ⟺
+//!   i ∈ wanted OR
 //!   ∃ recipe r, output o:
 //!     i is an input of r AND
 //!     o is an output of r AND
-//!     alive(o) == true AND
+//!     needed(o) == true AND
 //!     state(r, o) = propagate
 //! ```
-//! Starting from roots and walking backwards through producers.
+//! Starting from the wanted items and walking backwards through producers.
 //!
-//! The other alternatives, i.e. starting from non-root recipes with no alive successors,
-//! marking them as dead, and iterating, maintains the self-sustaining junk-cycles like
-//! (stone dust <-> small stone dust). Propagating liveness prevents this.
+//! The other alternatives, i.e. starting from non-wanted recipes with no needed
+//! successors, marking them as dead, and iterating, maintains the self-sustaining
+//! junk-cycles like (stone dust <-> small stone dust). Propagating neededness prevents
+//! this.
 
 use core::iter::repeat_with;
 use std::collections::VecDeque;
@@ -24,57 +25,57 @@ use super::adjacency::Producers;
 use super::edges::{Cause, EdgeState, EdgeStates, NodeAttrs};
 use crate::model::{Graph, ItemIndex, RecipeIndex};
 
-/// Why an item ended up alive.
+/// Why an item ended up needed.
 #[derive(Debug)]
 pub enum Why {
-    /// Alive because it's a root. Also explains why it was rooted.
-    Root(Cause),
-    /// Alive because `recipe`'s output `output` is alive, with a propagating edge.
+    /// Needed because it's wanted directly. Also explains why it was wanted.
+    Wanted(Cause),
+    /// Needed because `recipe`'s output `output` is needed, with a propagating edge.
     Via {
         /// The recipe that has this item as an input.
         recipe: RecipeIndex,
-        /// The alive output that made this item alive.
+        /// The needed output that made this item needed.
         output: ItemIndex,
     },
 }
 
-/// The result of [`liveness`]: which items and recipes are alive, and why.
+/// The result of [`needed`]: which items and recipes are needed, and why.
 #[derive(Debug)]
-pub struct Liveness {
-    /// `alive_item.contains(item.index())`: whether `item` is alive.
-    alive_item: FixedBitSet,
-    /// `alive_recipe.contains(recipe.index())`: whether `recipe` has at
-    /// least one alive output over a propagating edge.
-    alive_recipe: FixedBitSet,
-    /// `why[item.index()]` is why that item is alive, or `None` if it's dead.
+pub struct Needed {
+    /// `item_bits.contains(item.index())`: whether `item` is needed.
+    item_bits: FixedBitSet,
+    /// `recipe_bits.contains(recipe.index())`: whether `recipe` has at
+    /// least one needed output over a propagating edge.
+    recipe_bits: FixedBitSet,
+    /// `why[item.index()]` is why that item is needed, or `None` if it's dead.
     why: Vec<Option<Why>>,
 }
 
-impl Liveness {
-    /// Whether `item` is alive.
+impl Needed {
+    /// Whether `item` is needed.
     ///
     /// # Panics
     ///
     /// If `item` is out of bounds for the graph this was computed from.
     #[inline]
     #[must_use]
-    pub fn is_alive(&self, item: ItemIndex) -> bool {
-        self.alive_item.contains(item.index())
+    pub fn is_needed(&self, item: ItemIndex) -> bool {
+        self.item_bits.contains(item.index())
     }
 
     /// Whether `recipe` propagates, i.e. whether at least one of its
-    /// outputs is alive over a propagating edge.
+    /// outputs is needed over a propagating edge.
     ///
     /// # Panics
     ///
     /// If `recipe` is out of bounds for the graph this was computed from.
     #[inline]
     #[must_use]
-    pub fn is_recipe_alive(&self, recipe: RecipeIndex) -> bool {
-        self.alive_recipe.contains(recipe.index())
+    pub fn is_recipe_needed(&self, recipe: RecipeIndex) -> bool {
+        self.recipe_bits.contains(recipe.index())
     }
 
-    /// Why `item` is alive, or `None` if it's dead.
+    /// Why `item` is needed, or `None` if it's dead.
     #[inline]
     #[must_use]
     pub fn why(&self, item: ItemIndex) -> Option<&Why> {
@@ -82,9 +83,9 @@ impl Liveness {
     }
 }
 
-/// Computes liveness.
+/// Computes what's needed.
 ///
-/// Reverse BFS from `attrs`'s roots, over `graph`'s recipes, and only
+/// Reverse BFS from `attrs`'s wanted items, over `graph`'s recipes, and only
 /// following edges `edges` marked [`EdgeState::Propagate`].
 ///
 /// # Panics
@@ -92,11 +93,11 @@ impl Liveness {
 /// If `attrs`, `edges` or their indices weren't built from `graph`.
 #[inline]
 #[must_use]
-pub fn liveness(graph: &Graph, attrs: &NodeAttrs, edges: &EdgeStates) -> Liveness {
+pub fn needed(graph: &Graph, attrs: &NodeAttrs, edges: &EdgeStates) -> Needed {
     let producers = Producers::build(graph);
 
-    let mut alive_item = FixedBitSet::with_capacity(graph.items().len());
-    let mut alive_recipe = FixedBitSet::with_capacity(graph.recipes().len());
+    let mut item_bits = FixedBitSet::with_capacity(graph.items().len());
+    let mut recipe_bits = FixedBitSet::with_capacity(graph.recipes().len());
     let mut why: Vec<Option<Why>> = repeat_with(|| None).take(graph.items().len()).collect();
     // TODO: Once we have multiple sets to BFS over, we probably should still
     // only have one queue (marked as "is this relevant to *anything*"),
@@ -104,15 +105,15 @@ pub fn liveness(graph: &Graph, attrs: &NodeAttrs, edges: &EdgeStates) -> Livenes
     // Does that make sense?
     let mut queue: VecDeque<ItemIndex> = VecDeque::new();
 
-    for root in attrs.roots() {
-        alive_item.insert(root.index());
+    for wanted in attrs.wanted_items() {
+        item_bits.insert(wanted.index());
         let cause = attrs
-            .root_cause(root)
-            .expect("a root always has a cause, set alongside it by NodeAttrs::set_root")
+            .wanted_cause(wanted)
+            .expect("a wanted item always has a cause, set alongside it by NodeAttrs::set_wanted")
             .clone();
-        *why.get_mut(root.index())
-            .expect("root index in bounds for this graph") = Some(Why::Root(cause));
-        queue.push_back(root);
+        *why.get_mut(wanted.index())
+            .expect("wanted index in bounds for this graph") = Some(Why::Wanted(cause));
+        queue.push_back(wanted);
     }
 
     while let Some(output_item) = queue.pop_front() {
@@ -120,18 +121,18 @@ pub fn liveness(graph: &Graph, attrs: &NodeAttrs, edges: &EdgeStates) -> Livenes
             if edges.state(recipe, output) != EdgeState::Propagate {
                 continue;
             }
-            if alive_recipe.contains(recipe.index()) {
+            if recipe_bits.contains(recipe.index()) {
                 continue;
             }
-            alive_recipe.insert(recipe.index());
+            recipe_bits.insert(recipe.index());
 
             let recipe_data = graph.recipe(recipe);
             for slot in recipe_data.inputs() {
                 for &member in slot.members() {
-                    if alive_item.contains(member.index()) {
+                    if item_bits.contains(member.index()) {
                         continue;
                     }
-                    alive_item.insert(member.index());
+                    item_bits.insert(member.index());
                     *why.get_mut(member.index())
                         .expect("item index in bounds for this graph") = Some(Why::Via {
                         recipe,
@@ -143,32 +144,32 @@ pub fn liveness(graph: &Graph, attrs: &NodeAttrs, edges: &EdgeStates) -> Livenes
         }
     }
 
-    Liveness {
-        alive_item,
-        alive_recipe,
+    Needed {
+        item_bits,
+        recipe_bits,
         why,
     }
 }
 
-/// Naive reference liveness. Iterates the fixpoint equation to a fixed point by
-/// rescanning every recipe, instead of BFS.
+/// Naive reference version of [`needed`]. Iterates the fixpoint equation to a fixed
+/// point by rescanning every recipe, instead of BFS.
 ///
-/// This is only used to test [`liveness`] against a structurally different implementation
+/// This is only used to test [`needed`] against a structurally different implementation
 /// of the equation.
 #[cfg(test)]
-fn naive_liveness(
+fn naive_needed(
     graph: &Graph,
     attrs: &NodeAttrs,
     edges: &EdgeStates,
 ) -> (FixedBitSet, FixedBitSet) {
-    let mut alive_item = FixedBitSet::with_capacity(graph.items().len());
+    let mut item_bits = FixedBitSet::with_capacity(graph.items().len());
     for position in 0..graph.items().len() {
         let item = ItemIndex::new(u32::try_from(position).expect("item count fits u32"));
-        if attrs.is_root(item) {
-            alive_item.insert(position);
+        if attrs.is_wanted(item) {
+            item_bits.insert(position);
         }
     }
-    let mut alive_recipe = FixedBitSet::with_capacity(graph.recipes().len());
+    let mut recipe_bits = FixedBitSet::with_capacity(graph.recipes().len());
 
     loop {
         let mut changed = false;
@@ -181,17 +182,17 @@ fn naive_liveness(
                 if edges.state(recipe_index, output_index) != EdgeState::Propagate {
                     continue;
                 }
-                if !alive_item.contains(output.item().index()) {
+                if !item_bits.contains(output.item().index()) {
                     continue;
                 }
-                if !alive_recipe.contains(recipe_position) {
-                    alive_recipe.insert(recipe_position);
+                if !recipe_bits.contains(recipe_position) {
+                    recipe_bits.insert(recipe_position);
                     changed = true;
                 }
                 for slot in recipe.inputs() {
                     for &member in slot.members() {
-                        if !alive_item.contains(member.index()) {
-                            alive_item.insert(member.index());
+                        if !item_bits.contains(member.index()) {
+                            item_bits.insert(member.index());
                             changed = true;
                         }
                     }
@@ -203,21 +204,21 @@ fn naive_liveness(
         }
     }
 
-    (alive_item, alive_recipe)
+    (item_bits, recipe_bits)
 }
 
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
 
-    use super::{liveness, naive_liveness, Why};
+    use super::{naive_needed, needed, Why};
     use crate::analysis::edges::{Cause, EdgeState, EdgeStates, NodeAttrs};
     use crate::analysis::proptest_support::arb_graph_attrs_edges;
     use crate::graph_dsl::parse;
     use crate::model::{ItemIndex, RecipeIndex};
 
     #[test]
-    fn marks_roots_and_their_producer_chain_alive() {
+    fn marks_wanted_items_and_their_producer_chain_needed() {
         let (graph, roots) = parse(
             "
             root concrete
@@ -225,12 +226,12 @@ mod tests {
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
-        for root in roots {
-            attrs.set_root(root, Cause::Pseudo);
+        for wanted in roots {
+            attrs.set_wanted(wanted, Cause::Pseudo);
         }
         let edges = EdgeStates::defaults(&graph);
 
-        let live = liveness(&graph, &attrs, &edges);
+        let live = needed(&graph, &attrs, &edges);
 
         // Sorted item order: concrete=0, stone_dust=1, water=2.
         // Sorted recipe order: mix=0.
@@ -239,12 +240,15 @@ mod tests {
         let water = ItemIndex::new(2);
         let mix = RecipeIndex::new(0);
 
-        assert!(live.is_alive(concrete));
-        assert!(live.is_alive(stone_dust));
-        assert!(live.is_alive(water));
-        assert!(live.is_recipe_alive(mix));
+        assert!(live.is_needed(concrete));
+        assert!(live.is_needed(stone_dust));
+        assert!(live.is_needed(water));
+        assert!(live.is_recipe_needed(mix));
 
-        assert!(matches!(live.why(concrete), Some(Why::Root(Cause::Pseudo))));
+        assert!(matches!(
+            live.why(concrete),
+            Some(Why::Wanted(Cause::Pseudo))
+        ));
         assert!(matches!(
             live.why(stone_dust),
             Some(Why::Via { recipe, output }) if *recipe == mix && *output == concrete
@@ -252,7 +256,7 @@ mod tests {
     }
 
     #[test]
-    fn stone_dust_cycle_dies_entirely_when_nothing_roots_it() {
+    fn stone_dust_cycle_dies_entirely_when_nothing_wants_it() {
         let (graph, roots) = parse(
             "
             pack:   4 small_stone_dust -> stone_dust
@@ -263,14 +267,14 @@ mod tests {
         let attrs = NodeAttrs::defaults(&graph);
         let edges = EdgeStates::defaults(&graph);
 
-        let live = liveness(&graph, &attrs, &edges);
+        let live = needed(&graph, &attrs, &edges);
 
         // Sorted item order: small_stone_dust=0, stone_dust=1.
         // Sorted recipe order: pack=0, unpack=1.
-        assert!(!live.is_alive(ItemIndex::new(0)));
-        assert!(!live.is_alive(ItemIndex::new(1)));
-        assert!(!live.is_recipe_alive(RecipeIndex::new(0)));
-        assert!(!live.is_recipe_alive(RecipeIndex::new(1)));
+        assert!(!live.is_needed(ItemIndex::new(0)));
+        assert!(!live.is_needed(ItemIndex::new(1)));
+        assert!(!live.is_recipe_needed(RecipeIndex::new(0)));
+        assert!(!live.is_recipe_needed(RecipeIndex::new(1)));
     }
 
     #[test]
@@ -284,8 +288,8 @@ mod tests {
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
-        for root in roots {
-            attrs.set_root(root, Cause::Pseudo);
+        for wanted in roots {
+            attrs.set_wanted(wanted, Cause::Pseudo);
         }
         let mut edges = EdgeStates::defaults(&graph);
 
@@ -294,22 +298,22 @@ mod tests {
         let pack = RecipeIndex::new(1);
         edges.set(pack, 0, EdgeState::Inert, Cause::Default);
 
-        let live = liveness(&graph, &attrs, &edges);
+        let live = needed(&graph, &attrs, &edges);
 
         // Sorted item order: concrete=0, small_stone_dust=1, stone_dust=2, water=3.
-        assert!(live.is_alive(ItemIndex::new(0)), "concrete: root");
+        assert!(live.is_needed(ItemIndex::new(0)), "concrete: wanted");
         assert!(
-            !live.is_alive(ItemIndex::new(1)),
+            !live.is_needed(ItemIndex::new(1)),
             "small_stone_dust: only reachable through pack's inert edge"
         );
-        assert!(live.is_alive(ItemIndex::new(2)), "stone_dust: used by mix");
-        assert!(live.is_alive(ItemIndex::new(3)), "water: used by mix");
+        assert!(live.is_needed(ItemIndex::new(2)), "stone_dust: used by mix");
+        assert!(live.is_needed(ItemIndex::new(3)), "water: used by mix");
 
-        assert!(live.is_recipe_alive(RecipeIndex::new(0)), "mix propagates");
-        assert!(!live.is_recipe_alive(pack), "pack's only edge is inert");
+        assert!(live.is_recipe_needed(RecipeIndex::new(0)), "mix propagates");
+        assert!(!live.is_recipe_needed(pack), "pack's only edge is inert");
         assert!(
-            !live.is_recipe_alive(RecipeIndex::new(2)),
-            "unpack's output never becomes alive"
+            !live.is_recipe_needed(RecipeIndex::new(2)),
+            "unpack's output never becomes needed"
         );
     }
 
@@ -322,19 +326,19 @@ mod tests {
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
-        for root in roots {
-            attrs.set_root(root, Cause::Pseudo);
+        for wanted in roots {
+            attrs.set_wanted(wanted, Cause::Pseudo);
         }
         let mut edges = EdgeStates::defaults(&graph);
         edges.set(RecipeIndex::new(0), 0, EdgeState::Dropped, Cause::Default);
 
-        let live = liveness(&graph, &attrs, &edges);
+        let live = needed(&graph, &attrs, &edges);
 
         // Sorted item order: concrete=0, stone_dust=1, water=2.
-        assert!(live.is_alive(ItemIndex::new(0)), "concrete: root");
-        assert!(!live.is_alive(ItemIndex::new(1)), "mix's edge is dropped");
-        assert!(!live.is_alive(ItemIndex::new(2)), "mix's edge is dropped");
-        assert!(!live.is_recipe_alive(RecipeIndex::new(0)));
+        assert!(live.is_needed(ItemIndex::new(0)), "concrete: wanted");
+        assert!(!live.is_needed(ItemIndex::new(1)), "mix's edge is dropped");
+        assert!(!live.is_needed(ItemIndex::new(2)), "mix's edge is dropped");
+        assert!(!live.is_recipe_needed(RecipeIndex::new(0)));
     }
 
     #[test]
@@ -348,12 +352,12 @@ mod tests {
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
-        for root in roots {
-            attrs.set_root(root, Cause::Pseudo);
+        for wanted in roots {
+            attrs.set_wanted(wanted, Cause::Pseudo);
         }
         let edges = EdgeStates::defaults(&graph);
 
-        let live = liveness(&graph, &attrs, &edges);
+        let live = needed(&graph, &attrs, &edges);
 
         // Sorted item order: dirt=0, ingot=1, ore=2, plate=3.
         let dirt = ItemIndex::new(0);
@@ -366,15 +370,15 @@ mod tests {
         let press = RecipeIndex::new(1);
         let smelt = RecipeIndex::new(2);
 
-        assert!(live.is_alive(dirt), "three hops from the root");
-        assert!(live.is_alive(ingot));
-        assert!(live.is_alive(ore));
-        assert!(live.is_alive(plate));
-        assert!(live.is_recipe_alive(mine));
-        assert!(live.is_recipe_alive(press));
-        assert!(live.is_recipe_alive(smelt));
+        assert!(live.is_needed(dirt), "three hops from the wanted item");
+        assert!(live.is_needed(ingot));
+        assert!(live.is_needed(ore));
+        assert!(live.is_needed(plate));
+        assert!(live.is_recipe_needed(mine));
+        assert!(live.is_recipe_needed(press));
+        assert!(live.is_recipe_needed(smelt));
 
-        assert!(matches!(live.why(plate), Some(Why::Root(Cause::Pseudo))));
+        assert!(matches!(live.why(plate), Some(Why::Wanted(Cause::Pseudo))));
         assert!(matches!(
             live.why(ingot),
             Some(Why::Via { recipe, output }) if *recipe == press && *output == plate
@@ -401,12 +405,12 @@ mod tests {
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
-        for root in roots {
-            attrs.set_root(root, Cause::Pseudo);
+        for wanted in roots {
+            attrs.set_wanted(wanted, Cause::Pseudo);
         }
         let edges = EdgeStates::defaults(&graph);
 
-        let live = liveness(&graph, &attrs, &edges);
+        let live = needed(&graph, &attrs, &edges);
 
         // Sorted item order: a=0, b=1, mid=2, shared=3.
         let a = ItemIndex::new(0);
@@ -423,43 +427,43 @@ mod tests {
     proptest! {
         #[test]
         fn matches_the_naive_fixpoint_oracle((graph, attrs, edges) in arb_graph_attrs_edges()) {
-            let live = liveness(&graph, &attrs, &edges);
-            let (oracle_alive_item, oracle_alive_recipe) = naive_liveness(&graph, &attrs, &edges);
+            let live = needed(&graph, &attrs, &edges);
+            let (oracle_needed_item, oracle_needed_recipe) = naive_needed(&graph, &attrs, &edges);
 
             for position in 0..graph.items().len() {
                 let item = ItemIndex::new(u32::try_from(position).expect("item count fits u32"));
-                prop_assert_eq!(live.is_alive(item), oracle_alive_item.contains(position));
+                prop_assert_eq!(live.is_needed(item), oracle_needed_item.contains(position));
             }
             for position in 0..graph.recipes().len() {
                 let recipe = RecipeIndex::new(u32::try_from(position).expect("recipe count fits u32"));
-                prop_assert_eq!(live.is_recipe_alive(recipe), oracle_alive_recipe.contains(position));
+                prop_assert_eq!(live.is_recipe_needed(recipe), oracle_needed_recipe.contains(position));
             }
         }
 
         #[test]
-        fn adding_a_root_never_shrinks_the_alive_set(
+        fn adding_a_wanted_item_never_shrinks_the_needed_set(
             (graph, attrs, edges) in arb_graph_attrs_edges(),
-            extra_root in 0_usize..9,
+            extra_wanted in 0_usize..9,
         ) {
-            let extra_root_item = ItemIndex::new(
-                u32::try_from(extra_root % graph.items().len()).expect("item count fits u32"),
+            let extra_wanted_item = ItemIndex::new(
+                u32::try_from(extra_wanted % graph.items().len()).expect("item count fits u32"),
             );
-            let before = liveness(&graph, &attrs, &edges);
+            let before = needed(&graph, &attrs, &edges);
 
-            let mut attrs_with_extra_root = attrs;
-            attrs_with_extra_root.set_root(extra_root_item, Cause::Pseudo);
-            let after = liveness(&graph, &attrs_with_extra_root, &edges);
+            let mut attrs_with_extra_wanted = attrs;
+            attrs_with_extra_wanted.set_wanted(extra_wanted_item, Cause::Pseudo);
+            let after = needed(&graph, &attrs_with_extra_wanted, &edges);
 
             for position in 0..graph.items().len() {
                 let item = ItemIndex::new(u32::try_from(position).expect("item count fits u32"));
-                if before.is_alive(item) {
-                    prop_assert!(after.is_alive(item));
+                if before.is_needed(item) {
+                    prop_assert!(after.is_needed(item));
                 }
             }
         }
 
         #[test]
-        fn dropping_an_edge_never_grows_the_alive_set(
+        fn dropping_an_edge_never_grows_the_needed_set(
             (graph, attrs, edges) in arb_graph_attrs_edges(),
             edge_pick in 0_usize..27,
         ) {
@@ -480,17 +484,17 @@ mod tests {
             let recipe = RecipeIndex::new(u32::try_from(recipe_position).expect("recipe count fits u32"));
             let output = u8::try_from(output_position).expect("outputs per recipe fit u8");
 
-            let before = liveness(&graph, &attrs, &edges);
+            let before = needed(&graph, &attrs, &edges);
 
             let mut edges_with_drop = edges;
             let cause = edges_with_drop.cause(recipe, output).clone();
             edges_with_drop.set(recipe, output, EdgeState::Dropped, cause);
-            let after = liveness(&graph, &attrs, &edges_with_drop);
+            let after = needed(&graph, &attrs, &edges_with_drop);
 
             for position in 0..graph.items().len() {
                 let item = ItemIndex::new(u32::try_from(position).expect("item count fits u32"));
-                if after.is_alive(item) {
-                    prop_assert!(before.is_alive(item));
+                if after.is_needed(item) {
+                    prop_assert!(before.is_needed(item));
                 }
             }
         }

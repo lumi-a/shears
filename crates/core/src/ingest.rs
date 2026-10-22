@@ -427,6 +427,32 @@ fn consumed_slot(leaves: &[Leaf], count: u32, resolver: &Resolver<'_>) -> Result
     Ok(Slot::new(members, tag, count, 1.0))
 }
 
+/// How far outside `[0, 1]` a chance value may lie.
+pub const CHANCE_TOLERANCE: f32 = 1e-5;
+
+/// Validates a chance value read from the export, clamping it into `[0, 1]` if it's
+/// only off by noise.
+///
+/// TODO: If the number is <= 0 + CHANCE_TOLERANCE or >= 1 - CHANCE_TOLERANCE, should we
+/// also clamp it to 0 or 1 respectively? That would help with checks like "This is a
+/// catalyst" and "this is a definitely consumed item", in case some recipes have, for any
+/// reason, messed up numbers there.
+///
+/// TODO: This function should be used.
+///
+/// # Errors
+///
+/// If `raw` is more than [`CHANCE_TOLERANCE`] outside `[0, 1]`. That is, if `raw <=
+/// -CHANCE_TOLERANCE` or `raw >= 1+CHANCE_TOLERANCE`.
+#[inline]
+pub fn validate_chance(raw: f32) -> Result<f32, String> {
+    if raw < -CHANCE_TOLERANCE || raw > 1.0 + CHANCE_TOLERANCE {
+        Err(format!("chance {raw} is out of range [0, 1]"))
+    } else {
+        Ok(raw.clamp(0.0, 1.0))
+    }
+}
+
 /// Resolves a bare output item or fluid id to its [`ItemIndex`].
 fn resolve_output_id(id: &str, resolver: &Resolver<'_>) -> Result<ItemIndex, String> {
     resolver
@@ -440,7 +466,7 @@ fn resolve_output_id(id: &str, resolver: &Resolver<'_>) -> Result<ItemIndex, Str
 ///
 /// Unhandled types are counted in the report but don't produce a draft.
 ///
-/// TODO: Unhandled types should be handled and produce a draft, /AND/ add a message to
+/// TODO: Unhandled types should be handled and produce a draft, *AND* add a message to
 /// the report complaining about the unknown type.
 fn parse_recipes(
     files: &[RawFile],
@@ -502,4 +528,28 @@ fn parse_recipes(
     }
 
     drafts
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_chance;
+
+    #[test]
+    fn values_inside_the_range_pass_through_unchanged() {
+        assert_eq!(validate_chance(0.0), Ok(0.0));
+        assert_eq!(validate_chance(1.0), Ok(1.0));
+        assert_eq!(validate_chance(0.5), Ok(0.5));
+    }
+
+    #[test]
+    fn noise_within_tolerance_is_clamped_to_the_exact_boundary() {
+        assert_eq!(validate_chance(-0.000001), Ok(0.0));
+        assert_eq!(validate_chance(1.000001), Ok(1.0));
+    }
+
+    #[test]
+    fn genuinely_out_of_range_is_an_error() {
+        drop(validate_chance(-0.1).expect_err("-0.5 is far outside [0, 1]"));
+        drop(validate_chance(1.1).expect_err("1.5 is far outside [0, 1]"));
+    }
 }

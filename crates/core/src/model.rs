@@ -137,8 +137,6 @@ pub struct Slot {
 
 impl Slot {
     /// Constructs an input slot.
-    ///
-    /// TODO: Should we check that `chance` is in [0, 1]?
     pub(crate) const fn new(
         members: BTreeSet<ItemIndex>,
         tag: Option<u32>,
@@ -198,8 +196,6 @@ pub struct Output {
 
 impl Output {
     /// Constructs a recipe output.
-    ///
-    /// TODO: Should we check that `chance` is in \[0,1\] or even (0,1\]?
     pub(crate) const fn new(item: ItemIndex, count: u32, chance: f32) -> Self {
         Self {
             item,

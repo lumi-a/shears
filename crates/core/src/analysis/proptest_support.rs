@@ -34,7 +34,7 @@ fn arb_raw_recipe(item_count: usize) -> impl Strategy<Value = RawRecipe> {
         .prop_map(|(inputs, outputs)| RawRecipe { inputs, outputs })
 }
 
-/// A random small graph, its liveness roots, and random edge states.
+/// A random small graph, the items it wants, and random edge states.
 ///
 /// Up to 9 items and 9 recipes, each with up to 3 inputs/outputs.
 pub(super) fn arb_graph_attrs_edges() -> impl Strategy<Value = (Graph, NodeAttrs, EdgeStates)> {
@@ -46,18 +46,18 @@ pub(super) fn arb_graph_attrs_edges() -> impl Strategy<Value = (Graph, NodeAttrs
                 prop::collection::vec(any::<bool>(), item_count),
             )
         })
-        .prop_flat_map(|(item_count, raw_recipes, root_flags)| {
+        .prop_flat_map(|(item_count, raw_recipes, wanted_flags)| {
             let total_outputs: usize = raw_recipes.iter().map(|recipe| recipe.outputs.len()).sum();
             (
                 Just(item_count),
                 Just(raw_recipes),
-                Just(root_flags),
+                Just(wanted_flags),
                 prop::collection::vec(arb_edge_state(), total_outputs),
             )
         })
         .prop_map(
-            |(item_count, raw_recipes, root_flags, edge_state_choices)| {
-                build(item_count, &raw_recipes, &root_flags, edge_state_choices)
+            |(item_count, raw_recipes, wanted_flags, edge_state_choices)| {
+                build(item_count, &raw_recipes, &wanted_flags, edge_state_choices)
             },
         )
 }
@@ -65,7 +65,7 @@ pub(super) fn arb_graph_attrs_edges() -> impl Strategy<Value = (Graph, NodeAttrs
 fn build(
     item_count: usize,
     raw_recipes: &[RawRecipe],
-    root_flags: &[bool],
+    wanted_flags: &[bool],
     edge_state_choices: Vec<EdgeState>,
 ) -> (Graph, NodeAttrs, EdgeStates) {
     let item_index = |position: usize| {
@@ -126,9 +126,9 @@ fn build(
     }
 
     let mut attrs = NodeAttrs::defaults(&graph);
-    for (position, &is_root) in root_flags.iter().enumerate() {
-        if is_root {
-            attrs.set_root(item_index(position), Cause::Pseudo);
+    for (position, &is_wanted) in wanted_flags.iter().enumerate() {
+        if is_wanted {
+            attrs.set_wanted(item_index(position), Cause::Pseudo);
         }
     }
 

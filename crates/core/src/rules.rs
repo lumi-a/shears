@@ -1,20 +1,20 @@
 //! Rules set local analysis inputs from `rules.toml`.
 //!
-//! Ordered selector -> action pairs: roots, propagation, stage and decomposition. The
-//! last rule to match wins per attribute. Every rule must carry a reason, for the
+//! Ordered selector -> action pairs: wanted items, propagation, stage and decomposition.
+//! The last rule to match wins per attribute. Every rule must carry a reason, for the
 //! report's sake.
 //!
-//! TODO: Still not happy with "root" as the user-facing word for this. In the natural
-//! perception of the recipe-item graph (recipes point to their outputs, inputs point to
-//! their recipes), the things we call "roots" are actually leaves, it's just that we do
-//! the BFS in reverse, but calling them leaves instead would just confuse in the other
-//! direction. Perhaps "useful", "wanted", "needed" are better?
+//! Settled on "wanted" (opt-in/asserted directly) and "needed" (computed/transitive,
+//! what `liveness.rs`'s `Needed` used to call `Liveness`) over "root"/"alive": in the
+//! natural perception of the recipe-item graph (recipes point to their outputs, inputs
+//! point to their recipes), the things we called "roots" are actually leaves, it's just
+//! that the BFS runs in reverse -- "wanted"/"needed" sidestep that confusion entirely.
 //!
 //! ```toml
 //! [[rule]]
 //! reason = "batteries are useful as inventory items"
 //! filter = { id = "/_battery$/" }
-//! action = { root = true }
+//! action = { wanted = true }
 //!
 //! [[rule]]
 //! reason = "raw ores are obtainable from the world"
@@ -40,8 +40,8 @@ use crate::model::{Graph, ItemIndex, RecipeIndex};
 /// What one rule does to the items or recipes its selector matches.
 #[derive(Debug)]
 enum Action {
-    /// Seeds or unseeds liveness.
-    Root(bool),
+    /// Marks or unmarks an item as wanted directly.
+    Wanted(bool),
     /// Marks or unmarks a world source.
     WorldSource(bool),
     /// Sets every output edge's propagation state.
@@ -55,7 +55,7 @@ impl Action {
     /// Which [`Context`] this action's selector must be validated against.
     const fn context(&self) -> Context {
         match self {
-            Self::Root(_) | Self::WorldSource(_) => Context::Item,
+            Self::Wanted(_) | Self::WorldSource(_) => Context::Item,
             Self::Propagate(_) => Context::Recipe,
         }
     }
@@ -92,14 +92,14 @@ impl Rule {
         // Perhaps it would be better to isolate the item actions and the recipe actions
         // from each other in two distinct enums. Not sure.
         match self.action {
-            Action::Root(true) => {
+            Action::Wanted(true) => {
                 for_each_matching_item(graph, &self.selector, |item| {
-                    attrs.set_root(item, cause.clone());
+                    attrs.set_wanted(item, cause.clone());
                 });
             }
-            Action::Root(false) => {
+            Action::Wanted(false) => {
                 for_each_matching_item(graph, &self.selector, |item| {
-                    attrs.clear_root(item);
+                    attrs.clear_wanted(item);
                 });
             }
             Action::WorldSource(true) => {
@@ -252,7 +252,7 @@ fn parse_rule(entry: &toml::Value) -> Result<Rule, RuleError> {
 
 /// Parses a rule's `action` table into exactly one [`Action`].
 fn parse_action(action_table: &toml::Table) -> Result<Action, RuleError> {
-    const KNOWN: [&str; 3] = ["root", "world_source", "propagate"];
+    const KNOWN: [&str; 3] = ["wanted", "world_source", "propagate"];
 
     if let Some(unknown) = action_table
         .keys()
@@ -262,10 +262,10 @@ fn parse_action(action_table: &toml::Table) -> Result<Action, RuleError> {
     }
 
     let mut actions = Vec::new();
-    if let Some(value) = action_table.get("root") {
-        actions.push(Action::Root(value.as_bool().ok_or(
+    if let Some(value) = action_table.get("wanted") {
+        actions.push(Action::Wanted(value.as_bool().ok_or(
             RuleError::WrongShape {
-                key: "root",
+                key: "wanted",
                 expected: "a bool",
             },
         )?));
@@ -368,14 +368,14 @@ mod tests {
     use crate::model::{ItemIndex, RecipeIndex};
 
     #[test]
-    fn root_action_seeds_matching_items() {
+    fn wanted_action_marks_matching_items() {
         let (graph, _roots) = parse("mix: stone_dust -> gtceu:battery");
         let rules = RuleSet::parse(
             r#"
             [[rule]]
             reason = "batteries are useful"
             filter = { id = "/battery$/" }
-            action = { root = true }
+            action = { wanted = true }
             "#,
         )
         .expect("valid rules");
@@ -385,33 +385,33 @@ mod tests {
         rules.apply(&graph, &mut attrs, &mut edges, 0);
 
         // Sorted item order: gtceu:battery=0, stone_dust=1.
-        assert!(attrs.is_root(ItemIndex::new(0)));
-        assert!(!attrs.is_root(ItemIndex::new(1)));
+        assert!(attrs.is_wanted(ItemIndex::new(0)));
+        assert!(!attrs.is_wanted(ItemIndex::new(1)));
         assert!(matches!(
-            attrs.root_cause(ItemIndex::new(0)),
+            attrs.wanted_cause(ItemIndex::new(0)),
             Some(Cause::Rule { file: 0, index: 0 })
         ));
     }
 
     #[test]
-    fn root_false_unseeds_a_preset_root() {
+    fn wanted_false_unmarks_a_preset_wanted_item() {
         let (graph, _roots) = parse("mix: stone_dust -> concrete");
         let rules = RuleSet::parse(
             r#"
             [[rule]]
             reason = "don't want this one after all"
             filter = { id = "concrete" }
-            action = { root = false }
+            action = { wanted = false }
             "#,
         )
         .expect("valid rules");
         let mut attrs = NodeAttrs::defaults(&graph);
-        attrs.set_root(ItemIndex::new(0), Cause::Pseudo);
+        attrs.set_wanted(ItemIndex::new(0), Cause::Pseudo);
         let mut edges = EdgeStates::defaults(&graph);
 
         rules.apply(&graph, &mut attrs, &mut edges, 0);
 
-        assert!(!attrs.is_root(ItemIndex::new(0)));
+        assert!(!attrs.is_wanted(ItemIndex::new(0)));
     }
 
     #[test]
@@ -463,14 +463,14 @@ mod tests {
         let rules = RuleSet::parse(
             r#"
             [[rule]]
-            reason = "preset: every dust is a root"
+            reason = "preset: every dust is wanted"
             filter = { id = "/dust/" }
-            action = { root = true }
+            action = { wanted = true }
 
             [[rule]]
             reason = "local: actually, not this one"
             filter = { id = "stone_dust" }
-            action = { root = false }
+            action = { wanted = false }
             "#,
         )
         .expect("valid rules");
@@ -480,7 +480,7 @@ mod tests {
         rules.apply(&graph, &mut attrs, &mut edges, 0);
 
         // Sorted item order: concrete=0, stone_dust=1.
-        assert!(!attrs.is_root(ItemIndex::new(1)), "the later rule wins");
+        assert!(!attrs.is_wanted(ItemIndex::new(1)), "the later rule wins");
     }
 
     #[test]
@@ -489,7 +489,7 @@ mod tests {
             r#"
             [[rule]]
             filter = { id = "x" }
-            action = { root = true }
+            action = { wanted = true }
             "#,
         );
 
@@ -508,11 +508,11 @@ mod tests {
             [[rule]]
             reason = "nonsense"
             filter = { id = "x" }
-            action = { root = true, propagate = "drop" }
+            action = { wanted = true, propagate = "drop" }
             "#,
         );
 
-        let error = result.expect_err("root and propagate together is more than one action");
+        let error = result.expect_err("wanted and propagate together is more than one action");
         assert!(matches!(
             error,
             RuleError::InRule { position: 0, source } if matches!(*source, RuleError::MultipleActions)
