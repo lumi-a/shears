@@ -1,5 +1,11 @@
 //! Ingests the committed vanilla fixture and checks the shape of the result.
 
+#![expect(
+    unused_crate_dependencies,
+    reason = "this integration test only exercises ingest/io through shears_core's \
+              public API, not every dependency the crate declares."
+)]
+
 use std::fs::File;
 use std::path::{Path, PathBuf};
 

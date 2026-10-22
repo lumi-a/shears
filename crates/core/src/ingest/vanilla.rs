@@ -115,7 +115,7 @@ pub(super) fn crafting_shaped(
     })
 }
 
-/// `minecraft:crafting_shapeless`: an `ingredients` array
+/// `minecraft:crafting_shapeless`: an `ingredients` array.
 ///
 /// Repeated identical entries are merged and added into one slot.
 pub(super) fn crafting_shapeless(
@@ -158,7 +158,7 @@ pub(super) fn crafting_shapeless(
     })
 }
 
-/// `minecraft:smelting`, `blasting`, `smoking`, `campfire_cooking`
+/// `minecraft:smelting`, `blasting`, `smoking`, `campfire_cooking`.
 ///
 /// A single `ingredient`, a `result`, and a `cookingtime`.
 pub(super) fn cooking(
@@ -274,7 +274,7 @@ mod tests {
     use crate::ingest::Resolver;
     use crate::model::ItemIndex;
 
-    /// A small item universe and no tags
+    /// A small item universe and no tags.
     fn item_only_resolver(keys: &[&str]) -> (BTreeMap<String, ItemIndex>, BTreeMap<String, u32>) {
         let item_index = keys
             .iter()

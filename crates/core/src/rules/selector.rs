@@ -137,7 +137,7 @@ pub enum SelectorError {
 /// for "there exists a recipe that is almost identical, except it uses that item instead
 /// of this one" (this is useful e.g. to say that GT motors are better crafted in a
 /// crafting table than an assembler, or to prefer cutter recipes that use lubricant
-/// instead of water or distilled water)
+/// instead of water or distilled water).
 #[derive(Debug)]
 pub enum Selector {
     /// Every child must match (a TOML object).
@@ -409,7 +409,7 @@ const fn is_catalyst(chance: f32) -> bool {
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::{Context, Selector, matches_item, matches_recipe, parse};
+    use super::{matches_item, matches_recipe, parse, Context, Selector};
     use crate::graph_dsl::parse as parse_graph;
     use crate::model::{Graph, Item, ItemIndex, ItemKind, Output, Recipe, RecipeIndex, Slot};
 
