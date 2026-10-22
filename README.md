@@ -13,6 +13,11 @@ Find optimal clusterings and optimal hierarchical clusterings.
 - Use that one method to discover what lines of code are untested. In
   particular, ensure that all the report messages are tested, and in
   the respective tests, that they are very legible.
+- If selector.rs's regex fails due to taking too much time, you shouldn't
+  silently default to no match, you should instead emit some information.
+  Either just at debug time, but perhaps even preferrably at runtime.
+  Users might care about this.
+- Proper licensing of the text fixture data.
 
 ## License
 

@@ -334,10 +334,15 @@ pub enum RuleError {
     /// An `action` table had none of the recognized actions.
     #[error("`action` has no recognized action")]
     EmptyAction,
-    /// An `action` table had more than one recognized action; a rule sets exactly one.
+    /// An `action` table had more than one recognized action
     ///
-    /// TODO: Should this really be an error? Why? To prevent user error? And because the
-    /// scenarios in which you'd want to execute multiple actions are very rare?
+    /// For now, rules set exactly one, as I haven't yet seen a reasonable pair of rules
+    /// that would often go together. If this ever happens, we can either talk about
+    /// allowing multiple actions, or about creating a new action that does both things
+    /// simultaneously. Until then, it's easier to just do it this way.
+    ///
+    /// TODO: Although... Perhaps it would be more natural for an end user. Why would we
+    /// give them a table if they can't add multiple entries to that table?
     #[error("`action` has more than one action")]
     MultipleActions,
     /// The selector itself was invalid.
