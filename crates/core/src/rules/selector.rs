@@ -381,7 +381,7 @@ const fn is_catalyst(chance: f32) -> bool {
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::{matches_item, matches_recipe, parse, Context, Selector};
+    use super::{matches_item, matches_recipe, parse, Context, Selector, SelectorError};
     use crate::graph_dsl::parse as parse_graph;
     use crate::model::{Graph, Item, ItemIndex, ItemKind, Output, Recipe, RecipeIndex, Slot};
 
@@ -493,9 +493,16 @@ mod tests {
             toml::from_str(r#"match = { tag = "forge:ingots" }"#).expect("valid test TOML");
         let wrapped = value.get("match").expect("has match").clone();
 
-        let error = parse(&wrapped, Context::Recipe);
+        let error =
+            parse(&wrapped, Context::Recipe).expect_err("tag doesn't apply to a recipe selector");
 
-        assert!(error.is_err(), "tag doesn't apply to a recipe selector");
+        assert!(matches!(
+            error,
+            SelectorError::WrongContext {
+                key: "tag",
+                context: Context::Recipe,
+            }
+        ));
     }
 
     #[test]
@@ -613,7 +620,9 @@ mod tests {
             toml::from_str(r#"match = { nonsense = "x" }"#).expect("valid test TOML");
         let wrapped = value.get("match").expect("has match").clone();
 
-        let _: super::SelectorError =
+        let error =
             parse(&wrapped, Context::Item).expect_err("nonsense is not a recognized selector key");
+
+        assert!(matches!(error, SelectorError::UnknownKey(key) if key == "nonsense"));
     }
 }

@@ -328,6 +328,7 @@ pub enum RuleError {
 
 #[cfg(test)]
 mod tests {
+    use super::selector::{Context, SelectorError};
     use super::{RuleError, RuleSet};
     use crate::analysis::edges::{Cause, EdgeState, EdgeStates, NodeAttrs};
     use crate::graph_dsl::parse;
@@ -458,9 +459,13 @@ mod tests {
             set   = { root = true }
             "#,
         );
-        // TODO: Would it be better to match against the specific error we're expecting to
-        // trip here?
-        let _: RuleError = result.expect_err("invalid rules file");
+
+        let error = result.expect_err("rule 0 is missing `reason`");
+        assert!(matches!(
+            error,
+            RuleError::InRule { position: 0, source }
+                if matches!(*source, RuleError::MissingField { field: "reason" })
+        ));
     }
 
     #[test]
@@ -473,9 +478,12 @@ mod tests {
             set    = { root = true, propagate = "drop" }
             "#,
         );
-        // TODO: Would it be better to match against the specific error we're expecting to
-        // trip here?
-        let _: RuleError = result.expect_err("invalid rules file");
+
+        let error = result.expect_err("root (item) and propagate (recipe) don't mix");
+        assert!(matches!(
+            error,
+            RuleError::InRule { position: 0, source } if matches!(*source, RuleError::MixedContexts)
+        ));
     }
 
     #[test]
@@ -488,8 +496,17 @@ mod tests {
             set    = { propagate = "drop" }
             "#,
         );
-        // TODO: Would it be better to match against the specific error we're expecting to
-        // trip here?
-        let _: RuleError = result.expect_err("invalid rules file");
+
+        let error = result.expect_err("tag doesn't apply to a Context::Recipe selector");
+        assert!(matches!(
+            error,
+            RuleError::InRule { position: 0, source } if matches!(
+                *source,
+                RuleError::Selector(SelectorError::WrongContext {
+                    key: "tag",
+                    context: Context::Recipe,
+                })
+            )
+        ));
     }
 }
