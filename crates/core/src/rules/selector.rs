@@ -10,7 +10,21 @@
 //!
 //! Applying to only recipes: `input`, `output`, `catalyst`.
 //!
-//! TODO: Better documentation here, with examples.
+//! ```toml
+//! # AND: both must match.
+//! match = { mod = "gtceu", id = "/_battery$/" }
+//!
+//! # OR: either must match.
+//! match = [ { id = "minecraft:dirt" }, { id = "minecraft:coarse_dirt" } ]
+//!
+//! # NOT: negates the nested selector.
+//! match = { not = { mod = "minecraft" } }
+//!
+//! # input/output/catalyst take a nested selector, matched against the items in a
+//! # recipe's matching slots, not the recipe itself.
+//! match = { type = "gtceu:extruder", catalyst = { id = "gtceu:wire_extruder_mold" } }
+//! match = { input = { tag = "forge:dusts/rare_earth" } }
+//! ```
 
 use fancy_regex::Regex;
 

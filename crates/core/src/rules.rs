@@ -3,7 +3,49 @@
 //! Ordered selector -> action pairs: roots, propagation, stage and decomposition. The
 //! last match wins per attribute. Every rule must carry a reason, for the report's sake.
 //!
-//! TODO: Examples.
+//! TODO: I don't particularly like the name of the "set" key. Considering `set` is only
+//! allowed to do one action at the moment, could we do a better syntax for this, that
+//! isn't a table? E.g. instead `set = "root"` (which turns on the root) or `set =
+//! "unroot"` or `set = "world_source"`. That way, we also enforce only one action per
+//! match rule. And perhaps rename `set` to `action` or something. Maybe if we're really
+//! clever, we can rename all of the primary keys (are we sure that those three are all we
+//! need?) to use the exact same amount of characters, so that it all aligns satisfyingly
+//! in the TOML file. I should also note that I don't like the wording of "root" very
+//! much. It depends on your perception of the recipe-item-graph, and in the natural
+//! perception (recipes point to their outputs, inputs point to their recipes), the things
+//! we call "roots" are actually leaves, it's just that we do the BFS in reverse. At the
+//! same time, I would also strongly advise against calling them leaves, because that'd
+//! cause confusion in the other direction. One possible term may be "terminal_node", but
+//! that's unwieldy and doesn't really get the intent across to the user. Perhaps
+//! something like "useful" is a good name for it? Perhaps we should rephrase the whole
+//! codebase that way, so that terminal items are "useful", and "alive" items and recipes
+//! are called [some synonym of useful].
+//!
+//! TODO: The raw ore example should be done with a tag instead. By the way, should we
+//! just have special syntax for some things like mod filters or tag filters? E.g. in an
+//! EMI search, `@project` would only match things from projectred, and `#raw` would only
+//! match items/fluids with the string `raw` in any of their tags, like
+//! `#forge:raw_materials`. But that would probably pollute `match` a lot... Maybe worth
+//! thinking about if KubeJS also uses the `#` and `@` syntax? Does it?
+//!
+//! ```toml
+//! [[rule]]
+//! reason = "batteries are useful as inventory items"
+//! match = { id = "/_battery$/" }
+//! set = { root = true }
+//!
+//! [[rule]]
+//! reason = "raw ores are obtainable from the world"
+//! match = { id = "/^gtceu:raw_/" }
+//! set = { world_source = true }
+//!
+//! [[rule]]
+//! reason = "recycling shouldn't keep anything else alive"
+//! match = { type = "gtceu:macerator" }
+//! set = { propagate = "drop" }
+//! ```
+//!
+//! TODO: Describe the above examples better.
 
 pub mod selector;
 
@@ -129,7 +171,7 @@ fn for_each_matching_recipe(
 
 /// A `rules.toml` document's `[[rule]]` entries, already parsed and validated.
 ///
-/// TODO: Examples.
+/// See the [module docs](self) for example rule files.
 #[derive(Debug, Default)]
 pub struct RuleSet {
     /// Every rule, in file order.
