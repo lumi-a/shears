@@ -68,25 +68,24 @@ impl Rule {
         // Perhaps it would be better to isolate the item actions and the recipe actions
         // from each other in two distinct enums. Not sure.
         match self.action {
-            Action::Root(seed) => {
-                // TODO: Should the `if` not be outside the loop? Or I guess it's fast
-                // enough either way (or the compiler might even optimize it)
+            Action::Root(true) => {
                 for_each_matching_item(graph, &self.selector, |item| {
-                    if seed {
-                        attrs.set_root(item, cause.clone());
-                    } else {
-                        attrs.clear_root(item);
-                    }
+                    attrs.set_root(item, cause.clone());
                 });
             }
-            Action::WorldSource(mark) => {
-                // TODO: See above remark
+            Action::Root(false) => {
                 for_each_matching_item(graph, &self.selector, |item| {
-                    if mark {
-                        attrs.set_world_source(item);
-                    } else {
-                        attrs.clear_world_source(item);
-                    }
+                    attrs.clear_root(item);
+                });
+            }
+            Action::WorldSource(true) => {
+                for_each_matching_item(graph, &self.selector, |item| {
+                    attrs.set_world_source(item);
+                });
+            }
+            Action::WorldSource(false) => {
+                for_each_matching_item(graph, &self.selector, |item| {
+                    attrs.clear_world_source(item);
                 });
             }
             Action::Propagate(state) => {
