@@ -358,7 +358,7 @@ pub enum RuleError {
     /// An `action` table had none of the recognized actions.
     #[error("`action` has no recognized action")]
     EmptyAction,
-    /// An `action` table had more than one recognized action
+    /// An `action` table had more than one recognized action.
     ///
     /// For now, rules set exactly one, as I haven't yet seen a reasonable pair of rules
     /// that would often go together. If this ever happens, we can either talk about

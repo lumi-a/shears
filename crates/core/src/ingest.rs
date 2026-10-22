@@ -433,8 +433,8 @@ pub const CHANCE_TOLERANCE: f32 = 1e-5;
 /// Validates a chance value read from the export, clamping it into `[0, 1]` if it's
 /// only off by noise.
 ///
-/// TODO: If the number is <= 0 + CHANCE_TOLERANCE or >= 1 - CHANCE_TOLERANCE, should we
-/// also clamp it to 0 or 1 respectively? That would help with checks like "This is a
+/// TODO: If the number is <= 0 + `CHANCE_TOLERANCE` or >= 1 - `CHANCE_TOLERANCE`, should
+/// we also clamp it to 0 or 1 respectively? That would help with checks like "This is a
 /// catalyst" and "this is a definitely consumed item", in case some recipes have, for any
 /// reason, messed up numbers there.
 ///
@@ -543,8 +543,8 @@ mod tests {
 
     #[test]
     fn noise_within_tolerance_is_clamped_to_the_exact_boundary() {
-        assert_eq!(validate_chance(-0.000001), Ok(0.0));
-        assert_eq!(validate_chance(1.000001), Ok(1.0));
+        assert_eq!(validate_chance(-0.000_001), Ok(0.0));
+        assert_eq!(validate_chance(1.000_001), Ok(1.0));
     }
 
     #[test]
