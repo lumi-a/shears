@@ -146,12 +146,12 @@ pub enum Selector {
     Any(Vec<Self>),
     /// The child must not match.
     Not(Box<Self>),
-    /// Matches the subject's id.
-    ///
-    /// TODO: Is this `minecraft:dirt` or `dirt`? If the former, then the `mod` selector
-    /// key is useless and we should discard it.
+    /// Matches the subject's full namespaced id.
     Id(Pattern),
-    /// Matches the subject id's namespace, i.e. the part before `:`.
+    /// Matches the subject id's namespace, i.e. the part before `:`, for a string.
+    ///
+    /// This can also be done by matching on Id with e.g. `/^minecraft:/`, but this is
+    /// more legible.
     Mod(String),
     /// Matches an item's kind (`"item"`/`"fluid"`) or a recipe's type id.
     Type(Pattern),
@@ -431,7 +431,19 @@ mod tests {
         assert!(!matches_item(&select, &graph, ItemIndex::new(1)));
     }
 
-    // TODO: A positive and a negative test for anchoring would be nice.
+    #[test]
+    fn regexes_are_unanchored_and_match_anywhere_in_the_id() {
+        let (graph, _roots) = parse_graph("mix: coarse_dirt + dirt -> concrete");
+        let select = selector(r#"match = { id = "/dirt/" }"#, Context::Item);
+
+        // Sorted item order: coarse_dirt=0, concrete=1.
+        assert!(
+            matches_item(&select, &graph, ItemIndex::new(0)),
+            "unanchored: /dirt/ matches anywhere in the id, not just the whole string"
+        );
+        assert!(!matches_item(&select, &graph, ItemIndex::new(1))); // concrete
+        assert!(matches_item(&select, &graph, ItemIndex::new(2))); // dirt
+    }
 
     #[test]
     fn slash_wrapped_id_is_a_regex() {
