@@ -1,3 +1,5 @@
+//! The liveness computation.
+//!
 //! ```txt
 //! alive(i) ⟺
 //!   i ∈ roots OR

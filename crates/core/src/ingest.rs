@@ -1,3 +1,10 @@
+//! Turns a `/kubejs export` into a `model::Graph`.
+//!
+//! Problems turn into `Diagnostic`s in the returned `ParseReport`.
+//!
+//! Tags and the item/fluid registries are resolved first. Every recipe file can then be
+//! parsed to real ids without incomplete drafts.
+
 mod ingredient;
 mod vanilla;
 

@@ -1,14 +1,10 @@
+//! Analysis of the graph state.
+//!
 //! Annotate first, then compute (edge states, liveness, byproducts, open competitions).
 
-/// Derived per-edge and per-node state, and the reasons behind it.
-pub mod edges;
-
-/// Lookups derived from a `Graph`. Not serialized, rebuilt after loading instead.
 pub mod adjacency;
-
-/// The liveness computation.
+pub mod edges;
 pub mod liveness;
 
-/// Random small graphs for property tests.
 #[cfg(test)]
 mod proptest_support;

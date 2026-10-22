@@ -19,9 +19,12 @@ fs = ["dep:walkdir"]
 parallel = []
 
 [dependencies]
+fancy-regex = "0.19.2"
 fixedbitset = "0.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+thiserror = "2.0.21"
+toml = "0.8"
 walkdir = { version = "2", optional = true }
 
 [dev-dependencies]

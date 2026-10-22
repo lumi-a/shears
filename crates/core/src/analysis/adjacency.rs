@@ -1,3 +1,5 @@
+//! Lookups derived from a `Graph`. Not serialized, rebuilt after loading instead.
+
 use crate::model::{Graph, ItemIndex, RecipeIndex};
 
 /// Reverse index from each item to the recipes that produce it.

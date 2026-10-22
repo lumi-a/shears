@@ -7,6 +7,12 @@ Find optimal clusterings and optimal hierarchical clusterings.
 - Block-quote License and Conribution sections in README?
 - Figure out what KubeJS and MC version this supports, and support many
   reasonable versions of either
+- Add benchmarks
+- Perhaps switch to a regex engine that has compatibility with Java's
+  regexes, as long as benchmarks permit this switch at least.
+- Use that one method to discover what lines of code are untested. In
+  particular, ensure that all the report messages are tested, and in
+  the respective tests, that they are very legible.
 
 ## License
 

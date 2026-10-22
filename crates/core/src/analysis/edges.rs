@@ -1,3 +1,5 @@
+//! Derived per-edge and per-node state, and the reasons behind it.
+//!
 //! Propagation lives *only* on `recipe -> output` edges, not on inputs.
 
 use fixedbitset::FixedBitSet;
@@ -223,6 +225,20 @@ impl NodeAttrs {
             .expect("item index in bounds for this graph") = Some(cause);
     }
 
+    /// Unmarks `item` as a liveness root, and clears its cause.
+    ///
+    /// # Panics
+    ///
+    /// If `item` is out of bounds for the graph this was built from.
+    #[inline]
+    pub fn clear_root(&mut self, item: ItemIndex) {
+        self.root.remove(item.index());
+        *self
+            .root_cause
+            .get_mut(item.index())
+            .expect("item index in bounds for this graph") = None;
+    }
+
     /// Whether `item` is a world source.
     ///
     /// # Panics
@@ -242,6 +258,16 @@ impl NodeAttrs {
     #[inline]
     pub fn set_world_source(&mut self, item: ItemIndex) {
         self.world_source.insert(item.index());
+    }
+
+    /// Unmarks `item` as a world source.
+    ///
+    /// # Panics
+    ///
+    /// If `item` is out of bounds for the graph this was built from.
+    #[inline]
+    pub fn clear_world_source(&mut self, item: ItemIndex) {
+        self.world_source.remove(item.index());
     }
 }
 
@@ -365,5 +391,40 @@ mod tests {
             !attrs.is_root(ItemIndex::new(0)),
             "unrelated items stay unrooted"
         );
+    }
+
+    #[test]
+    fn clear_root_unmarks_the_item_and_its_cause() {
+        let (graph, _roots) = parse(
+            "
+            root concrete
+            mix: stone_dust + water -> concrete
+            ",
+        );
+        let mut attrs = NodeAttrs::defaults(&graph);
+        attrs.set_root(ItemIndex::new(1), Cause::Pseudo);
+
+        attrs.clear_root(ItemIndex::new(1));
+
+        assert!(!attrs.is_root(ItemIndex::new(1)));
+        assert!(attrs.root_cause(ItemIndex::new(1)).is_none());
+    }
+
+    #[test]
+    fn clear_world_source_unmarks_only_that_item() {
+        let (graph, _roots) = parse(
+            "
+            root concrete
+            mix: stone_dust + water -> concrete
+            ",
+        );
+        let mut attrs = NodeAttrs::defaults(&graph);
+        attrs.set_world_source(ItemIndex::new(1));
+        attrs.set_world_source(ItemIndex::new(2));
+
+        attrs.clear_world_source(ItemIndex::new(1));
+
+        assert!(!attrs.is_world_source(ItemIndex::new(1)));
+        assert!(attrs.is_world_source(ItemIndex::new(2)));
     }
 }
