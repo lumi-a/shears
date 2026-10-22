@@ -1,9 +1,9 @@
 //! A tiny textual DSL for hand-written test graphs. Test-only.
 //!
-//! ```text root concrete mix:    stone_dust + water -> concrete pack:   4
+//! ```text wanted concrete mix:    stone_dust + water -> concrete pack:   4
 //! small_stone_dust -> stone_dust unpack: stone_dust -> 4 small_stone_dust ```
 //!
-//! One `root` line lists root items, space-separated. Every other non-blank line is a recipe: A name, `:`, `+`-separated inputs, `->`, then `+`-separated outputs.
+//! One `wanted` line lists wanted items, space-separated. Every other non-blank line is a recipe: A name, `:`, `+`-separated inputs, `->`, then `+`-separated outputs.
 //!
 //! Each input or output is `[count] item`, the count defaulting to 1. Lines are trimmed before parsing.
 
@@ -31,8 +31,8 @@ struct RawRecipe {
 
 /// One parsed, not-yet-resolved line.
 enum RawLine {
-    /// A `root` line's item names.
-    Root(Vec<String>),
+    /// A `wanted` line's item names.
+    Wanted(Vec<String>),
     /// A recipe line.
     Recipe(RawRecipe),
 }
@@ -80,9 +80,10 @@ fn parse_terms(side: &str) -> Vec<RawTerm> {
 /// If a recipe line has no `:` or no `->`.
 #[expect(clippy::panic, reason = "This is only used in tests, not user-facing.")]
 fn parse_line(line: &str) -> RawLine {
-    if let Some(rest) = line.strip_prefix("root") {
-        // No names is valid too: a graph with no roots at all, where everything is dead.
-        return RawLine::Root(rest.split_whitespace().map(str::to_owned).collect());
+    if let Some(rest) = line.strip_prefix("wanted") {
+        // No names is valid too: a graph with nothing wanted at all, where everything is
+        // dead.
+        return RawLine::Wanted(rest.split_whitespace().map(str::to_owned).collect());
     }
 
     let (name, rest) = line
@@ -99,7 +100,7 @@ fn parse_line(line: &str) -> RawLine {
     })
 }
 
-/// Parses the DSL into a graph and its roots.
+/// Parses the DSL into a graph and its wanted items.
 ///
 /// # Panics
 ///
@@ -120,7 +121,7 @@ pub(crate) fn parse(source: &str) -> (Graph, BTreeSet<ItemIndex>) {
     let mut names: BTreeSet<String> = BTreeSet::new();
     for line in &lines {
         match line {
-            RawLine::Root(root_names) => names.extend(root_names.iter().cloned()),
+            RawLine::Wanted(wanted_names) => names.extend(wanted_names.iter().cloned()),
             RawLine::Recipe(recipe) => {
                 names.extend(recipe.inputs.iter().map(|term| term.name.clone()));
                 names.extend(recipe.outputs.iter().map(|term| term.name.clone()));
@@ -143,14 +144,14 @@ pub(crate) fn parse(source: &str) -> (Graph, BTreeSet<ItemIndex>) {
             .unwrap_or_else(|| panic!("unknown item {name:?}"))
     };
 
-    let mut roots: BTreeSet<ItemIndex> = BTreeSet::new();
+    let mut wanted: BTreeSet<ItemIndex> = BTreeSet::new();
     let mut named_recipes: Vec<(String, Recipe)> = Vec::new();
 
     for line in lines {
         match line {
-            RawLine::Root(root_names) => {
-                for name in root_names {
-                    let _: bool = roots.insert(resolve(&name));
+            RawLine::Wanted(wanted_names) => {
+                for name in wanted_names {
+                    let _: bool = wanted.insert(resolve(&name));
                 }
             }
             RawLine::Recipe(recipe) => {
@@ -184,7 +185,7 @@ pub(crate) fn parse(source: &str) -> (Graph, BTreeSet<ItemIndex>) {
 
     (
         Graph::new(1, items, recipes, Vec::new(), vec!["test".to_owned()]),
-        roots,
+        wanted,
     )
 }
 
@@ -198,9 +199,9 @@ mod tests {
 
     #[test]
     fn parses_the_stone_dust_example() {
-        let (graph, roots) = parse(
+        let (graph, wanted) = parse(
             "
-            root concrete
+            wanted concrete
             mix:    stone_dust + water -> concrete
             pack:   4 small_stone_dust -> stone_dust
             unpack: stone_dust -> 4 small_stone_dust
@@ -239,20 +240,20 @@ mod tests {
             .collect();
         assert_eq!(recipes, vec!["mix", "pack", "unpack"]);
 
-        assert_eq!(roots, iter::once(ItemIndex::new(0)).collect());
+        assert_eq!(wanted, iter::once(ItemIndex::new(0)).collect());
     }
 
     #[test]
-    fn allows_an_empty_root_line_and_empty_input_and_output_sides() {
-        let (graph, roots) = parse(
+    fn allows_an_empty_wanted_line_and_empty_input_and_output_sides() {
+        let (graph, wanted) = parse(
             "
-            root
+            wanted
             sink: iron_ingot ->
             source: -> gold_ingot
             ",
         );
 
-        assert_eq!(roots, BTreeSet::new());
+        assert_eq!(wanted, BTreeSet::new());
 
         let json = serde_json::to_value(&graph).expect("serializing the parsed graph");
         let recipes = json

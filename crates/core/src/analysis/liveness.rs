@@ -219,14 +219,14 @@ mod tests {
 
     #[test]
     fn marks_wanted_items_and_their_producer_chain_needed() {
-        let (graph, roots) = parse(
+        let (graph, wanted_items) = parse(
             "
-            root concrete
+            wanted concrete
             mix: stone_dust + water -> concrete
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
-        for wanted in roots {
+        for wanted in wanted_items {
             attrs.set_wanted(wanted, Cause::Pseudo);
         }
         let edges = EdgeStates::defaults(&graph);
@@ -257,13 +257,13 @@ mod tests {
 
     #[test]
     fn stone_dust_cycle_dies_entirely_when_nothing_wants_it() {
-        let (graph, roots) = parse(
+        let (graph, wanted_items) = parse(
             "
             pack:   4 small_stone_dust -> stone_dust
             unpack: stone_dust -> 4 small_stone_dust
             ",
         );
-        assert!(roots.is_empty(), "no root line in this fixture");
+        assert!(wanted_items.is_empty(), "no wanted line in this fixture");
         let attrs = NodeAttrs::defaults(&graph);
         let edges = EdgeStates::defaults(&graph);
 
@@ -279,16 +279,16 @@ mod tests {
 
     #[test]
     fn stone_dust_used_keeps_small_dust_dead_if_packing_is_marked_inert() {
-        let (graph, roots) = parse(
+        let (graph, wanted_items) = parse(
             "
-            root concrete
+            wanted concrete
             mix:    stone_dust + water -> concrete
             pack:   4 small_stone_dust -> stone_dust
             unpack: stone_dust -> 4 small_stone_dust
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
-        for wanted in roots {
+        for wanted in wanted_items {
             attrs.set_wanted(wanted, Cause::Pseudo);
         }
         let mut edges = EdgeStates::defaults(&graph);
@@ -319,14 +319,14 @@ mod tests {
 
     #[test]
     fn dropped_edge_also_blocks_propagation() {
-        let (graph, roots) = parse(
+        let (graph, wanted_items) = parse(
             "
-            root concrete
+            wanted concrete
             mix: stone_dust + water -> concrete
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
-        for wanted in roots {
+        for wanted in wanted_items {
             attrs.set_wanted(wanted, Cause::Pseudo);
         }
         let mut edges = EdgeStates::defaults(&graph);
@@ -343,16 +343,16 @@ mod tests {
 
     #[test]
     fn propagates_through_multiple_recipe_hops() {
-        let (graph, roots) = parse(
+        let (graph, wanted_items) = parse(
             "
-            root plate
+            wanted plate
             press: ingot -> plate
             smelt: ore -> ingot
             mine:  dirt -> ore
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
-        for wanted in roots {
+        for wanted in wanted_items {
             attrs.set_wanted(wanted, Cause::Pseudo);
         }
         let edges = EdgeStates::defaults(&graph);
@@ -395,17 +395,17 @@ mod tests {
 
     #[test]
     fn shortest_path_gets_attributed_by_why() {
-        let (graph, roots) = parse(
+        let (graph, wanted_items) = parse(
             "
-            root a
-            root b
+            wanted a
+            wanted b
             short: shared -> a
             long1: mid -> b
             long2: shared -> mid
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
-        for wanted in roots {
+        for wanted in wanted_items {
             attrs.set_wanted(wanted, Cause::Pseudo);
         }
         let edges = EdgeStates::defaults(&graph);

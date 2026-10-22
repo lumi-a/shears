@@ -22,7 +22,7 @@
 //! action = { world_source = true }
 //!
 //! [[rule]]
-//! reason = "recycling shouldn't keep anything else alive"
+//! reason = "recycling shouldn't keep anything else needed"
 //! filter = { type = "gtceu:macerator" }
 //! action = { propagate = "drop" }
 //! ```
@@ -369,7 +369,7 @@ mod tests {
 
     #[test]
     fn wanted_action_marks_matching_items() {
-        let (graph, _roots) = parse("mix: stone_dust -> gtceu:battery");
+        let (graph, _wanted) = parse("mix: stone_dust -> gtceu:battery");
         let rules = RuleSet::parse(
             r#"
             [[rule]]
@@ -395,7 +395,7 @@ mod tests {
 
     #[test]
     fn wanted_false_unmarks_a_preset_wanted_item() {
-        let (graph, _roots) = parse("mix: stone_dust -> concrete");
+        let (graph, _wanted) = parse("mix: stone_dust -> concrete");
         let rules = RuleSet::parse(
             r#"
             [[rule]]
@@ -416,7 +416,7 @@ mod tests {
 
     #[test]
     fn world_source_action_marks_matching_items() {
-        let (graph, _roots) = parse("mix: minecraft:iron_ore -> minecraft:iron_ingot");
+        let (graph, _wanted) = parse("mix: minecraft:iron_ore -> minecraft:iron_ingot");
         let rules = RuleSet::parse(
             r#"
             [[rule]]
@@ -438,7 +438,7 @@ mod tests {
 
     #[test]
     fn propagate_action_sets_every_output_edge() {
-        let (graph, _roots) = parse("macerate: ore -> 2 dust + 1 dust");
+        let (graph, _wanted) = parse("macerate: ore -> 2 dust + 1 dust");
         let rules = RuleSet::parse(
             r#"
             [[rule]]
@@ -459,7 +459,7 @@ mod tests {
 
     #[test]
     fn later_rules_win_over_earlier_ones_for_the_same_item() {
-        let (graph, _roots) = parse("mix: stone_dust -> concrete");
+        let (graph, _wanted) = parse("mix: stone_dust -> concrete");
         let rules = RuleSet::parse(
             r#"
             [[rule]]

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{Graph, ItemIndex, RecipeIndex};
 
-/// What a single `(recipe, output)` edge does for liveness propagation.
+/// What a single `(recipe, output)` edge does for neededness propagation.
 ///
 /// TODO: This probably won't be sufficient later on. Later on, we'll probably want to
 /// have things like "This edge is only useful in LV, but not in MV+", or "This edge is
@@ -15,16 +15,16 @@ use crate::model::{Graph, ItemIndex, RecipeIndex};
 /// specified by the user, i.e. not known at compile-time.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum EdgeState {
-    /// Normal: an alive output on this edge makes the recipe's inputs alive too.
+    /// Normal: a needed output on this edge makes the recipe's inputs needed too.
     Propagate,
-    /// Output exists, but doesn't makes the recipe's inputs alive on its own.
+    /// Output exists, but doesn't make the recipe's inputs needed on its own.
     Inert,
     /// Treated as if the recipe couldn't produce this output at all.
     /// Usually, this state is assigned for `(recipe, *)`, to drop the recipe entirely.
     Dropped,
 }
 
-/// Whether a recipe should be considered for visibility regardless of liveness.
+/// Whether a recipe should be considered for visibility regardless of neededness.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Show {
     /// Shown if it has a visible output on a non-dropped edge.
@@ -282,9 +282,9 @@ mod tests {
 
     #[test]
     fn defaults_are_propagate_with_no_cause_and_shaped_like_the_graph() {
-        let (graph, _roots) = parse(
+        let (graph, _wanted) = parse(
             "
-            root concrete
+            wanted concrete
             mix: stone_dust + water -> concrete
             ",
         );
@@ -300,9 +300,9 @@ mod tests {
 
     #[test]
     fn set_updates_state_and_cause_together() {
-        let (graph, _roots) = parse(
+        let (graph, _wanted) = parse(
             "
-            root concrete
+            wanted concrete
             mix: stone_dust + water -> concrete
             ",
         );
@@ -325,9 +325,9 @@ mod tests {
     #[test]
     #[should_panic(expected = "output index in bounds")]
     fn state_panics_on_an_out_of_bounds_output() {
-        let (graph, _roots) = parse(
+        let (graph, _wanted) = parse(
             "
-            root concrete
+            wanted concrete
             mix: stone_dust + water -> concrete
             ",
         );
@@ -338,9 +338,9 @@ mod tests {
 
     #[test]
     fn defaults_wanted_and_source_nothing_even_producerless_items() {
-        let (graph, _roots) = parse(
+        let (graph, _wanted) = parse(
             "
-            root concrete
+            wanted concrete
             mix: stone_dust + water -> concrete
             ",
         );
@@ -358,9 +358,9 @@ mod tests {
 
     #[test]
     fn set_world_source_marks_only_that_item() {
-        let (graph, _roots) = parse(
+        let (graph, _wanted) = parse(
             "
-            root concrete
+            wanted concrete
             mix: stone_dust + water -> concrete
             ",
         );
@@ -375,9 +375,9 @@ mod tests {
 
     #[test]
     fn set_wanted_marks_the_item_and_records_the_cause() {
-        let (graph, _roots) = parse(
+        let (graph, _wanted) = parse(
             "
-            root concrete
+            wanted concrete
             mix: stone_dust + water -> concrete
             ",
         );
@@ -398,9 +398,9 @@ mod tests {
 
     #[test]
     fn clear_wanted_unmarks_the_item_and_its_cause() {
-        let (graph, _roots) = parse(
+        let (graph, _wanted) = parse(
             "
-            root concrete
+            wanted concrete
             mix: stone_dust + water -> concrete
             ",
         );
@@ -415,9 +415,9 @@ mod tests {
 
     #[test]
     fn clear_world_source_unmarks_only_that_item() {
-        let (graph, _roots) = parse(
+        let (graph, _wanted) = parse(
             "
-            root concrete
+            wanted concrete
             mix: stone_dust + water -> concrete
             ",
         );

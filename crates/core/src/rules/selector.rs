@@ -409,7 +409,7 @@ mod tests {
 
     #[test]
     fn exact_id_matches_only_that_id() {
-        let (graph, _roots) = parse_graph("mix: stone_dust -> concrete");
+        let (graph, _wanted) = parse_graph("mix: stone_dust -> concrete");
         let select = selector(r#"filter = { id = "concrete" }"#, Context::Item);
 
         assert!(matches_item(&select, &graph, ItemIndex::new(0)));
@@ -418,7 +418,7 @@ mod tests {
 
     #[test]
     fn regexes_are_unanchored_and_match_anywhere_in_the_id() {
-        let (graph, _roots) = parse_graph("mix: coarse_dirt + dirt -> concrete");
+        let (graph, _wanted) = parse_graph("mix: coarse_dirt + dirt -> concrete");
         let select = selector(r#"filter = { id = "/dirt/" }"#, Context::Item);
 
         // Sorted item order: coarse_dirt=0, concrete=1.
@@ -432,7 +432,7 @@ mod tests {
 
     #[test]
     fn slash_wrapped_id_is_a_regex() {
-        let (graph, _roots) = parse_graph("mix: gtceu:dust_tiny -> gtceu:dust_small");
+        let (graph, _wanted) = parse_graph("mix: gtceu:dust_tiny -> gtceu:dust_small");
         let select = selector(r#"filter = { id = "/^gtceu:dust_/" }"#, Context::Item);
 
         // Sorted item order: gtceu:dust_small=0, gtceu:dust_tiny=1.
@@ -442,7 +442,7 @@ mod tests {
 
     #[test]
     fn mod_matches_the_namespace_only() {
-        let (graph, _roots) = parse_graph("mix: minecraft:dirt -> gtceu:dust");
+        let (graph, _wanted) = parse_graph("mix: minecraft:dirt -> gtceu:dust");
         let select = selector(r#"filter = { mod = "gtceu" }"#, Context::Item);
 
         // Sorted item order: gtceu:dust=0, minecraft:dirt=1.
@@ -452,7 +452,7 @@ mod tests {
 
     #[test]
     fn object_is_and_array_is_or() {
-        let (graph, _roots) = parse_graph("mix: minecraft:dirt + minecraft:sand -> gtceu:dust");
+        let (graph, _wanted) = parse_graph("mix: minecraft:dirt + minecraft:sand -> gtceu:dust");
         let and_select = selector(
             r#"filter = { mod = "minecraft", id = "/dirt/" }"#,
             Context::Item,
@@ -471,7 +471,7 @@ mod tests {
 
     #[test]
     fn not_negates_the_inner_selector() {
-        let (graph, _roots) = parse_graph("mix: minecraft:dirt -> minecraft:sand");
+        let (graph, _wanted) = parse_graph("mix: minecraft:dirt -> minecraft:sand");
         let select = selector(r#"filter = { not = { mod = "minecraft" } }"#, Context::Item);
 
         assert!(!matches_item(&select, &graph, ItemIndex::new(0)));
@@ -567,7 +567,7 @@ mod tests {
 
     #[test]
     fn input_matches_recipes_with_a_matching_input_member() {
-        let (graph, _roots) = parse_graph("mix: stone_dust + water -> concrete");
+        let (graph, _wanted) = parse_graph("mix: stone_dust + water -> concrete");
         let select = selector(
             r#"filter = { input = { id = "stone_dust" } }"#,
             Context::Recipe,
@@ -578,7 +578,7 @@ mod tests {
 
     #[test]
     fn output_matches_recipes_with_a_matching_output() {
-        let (graph, _roots) = parse_graph("mix: stone_dust + water -> concrete");
+        let (graph, _wanted) = parse_graph("mix: stone_dust + water -> concrete");
         let select = selector(
             r#"filter = { output = { id = "concrete" } }"#,
             Context::Recipe,
