@@ -40,10 +40,24 @@ use crate::model::{Graph, ItemIndex, RecipeIndex};
 /// What one rule does to the items or recipes its selector matches.
 #[derive(Debug)]
 enum Action {
+    /// Acts on items; the selector must be a [`Context::Item`] selector.
+    Item(ItemAction),
+    /// Acts on recipes; the selector must be a [`Context::Recipe`] selector.
+    Recipe(RecipeAction),
+}
+
+/// An [`Action`] that applies to every item its rule's selector matches.
+#[derive(Debug)]
+enum ItemAction {
     /// Marks or unmarks an item as wanted directly.
     Wanted(bool),
     /// Marks or unmarks a world source.
     WorldSource(bool),
+}
+
+/// An [`Action`] that applies to every recipe its rule's selector matches.
+#[derive(Debug)]
+enum RecipeAction {
     /// Sets every output edge's propagation state.
     ///
     /// TODO: At some point, we'll probably want to be able to match individual (recipe,
@@ -55,8 +69,40 @@ impl Action {
     /// Which [`Context`] this action's selector must be validated against.
     const fn context(&self) -> Context {
         match self {
-            Self::Wanted(_) | Self::WorldSource(_) => Context::Item,
-            Self::Propagate(_) => Context::Recipe,
+            Self::Item(_) => Context::Item,
+            Self::Recipe(_) => Context::Recipe,
+        }
+    }
+}
+
+impl ItemAction {
+    /// Applies this action to one matching item.
+    fn apply_to(&self, attrs: &mut NodeAttrs, item: ItemIndex, cause: &Cause) {
+        match *self {
+            Self::Wanted(true) => attrs.set_wanted(item, cause.clone()),
+            Self::Wanted(false) => attrs.clear_wanted(item),
+            Self::WorldSource(true) => attrs.set_world_source(item),
+            Self::WorldSource(false) => attrs.clear_world_source(item),
+        }
+    }
+}
+
+impl RecipeAction {
+    /// Applies this action to one matching recipe.
+    ///
+    /// # Panics
+    ///
+    /// If `recipe` has `u8::MAX` or more outputs.
+    fn apply_to(&self, graph: &Graph, edges: &mut EdgeStates, recipe: RecipeIndex, cause: &Cause) {
+        match *self {
+            Self::Propagate(state) => {
+                let output_count = graph.recipe(recipe).outputs().len();
+                for output_position in 0..output_count {
+                    let output = u8::try_from(output_position)
+                        .expect("fewer than u8::MAX outputs per recipe");
+                    edges.set(recipe, output, state, cause.clone());
+                }
+            }
         }
     }
 }
@@ -87,39 +133,15 @@ impl Rule {
         edges: &mut EdgeStates,
         cause: &Cause,
     ) {
-        // TODO: This matching (whether we do for_each_matching_item or
-        // for_each_matching_recipe) is decoupled from the context statement above.
-        // Perhaps it would be better to isolate the item actions and the recipe actions
-        // from each other in two distinct enums. Not sure.
-        match self.action {
-            Action::Wanted(true) => {
+        match &self.action {
+            Action::Item(item_action) => {
                 for_each_matching_item(graph, &self.selector, |item| {
-                    attrs.set_wanted(item, cause.clone());
+                    item_action.apply_to(attrs, item, cause);
                 });
             }
-            Action::Wanted(false) => {
-                for_each_matching_item(graph, &self.selector, |item| {
-                    attrs.clear_wanted(item);
-                });
-            }
-            Action::WorldSource(true) => {
-                for_each_matching_item(graph, &self.selector, |item| {
-                    attrs.set_world_source(item);
-                });
-            }
-            Action::WorldSource(false) => {
-                for_each_matching_item(graph, &self.selector, |item| {
-                    attrs.clear_world_source(item);
-                });
-            }
-            Action::Propagate(state) => {
+            Action::Recipe(recipe_action) => {
                 for_each_matching_recipe(graph, &self.selector, |recipe| {
-                    let output_count = graph.recipe(recipe).outputs().len();
-                    for output_position in 0..output_count {
-                        let output = u8::try_from(output_position)
-                            .expect("fewer than u8::MAX outputs per recipe");
-                        edges.set(recipe, output, state, cause.clone());
-                    }
+                    recipe_action.apply_to(graph, edges, recipe, cause);
                 });
             }
         }
@@ -263,23 +285,25 @@ fn parse_action(action_table: &toml::Table) -> Result<Action, RuleError> {
 
     let mut actions = Vec::new();
     if let Some(value) = action_table.get("wanted") {
-        actions.push(Action::Wanted(value.as_bool().ok_or(
+        actions.push(Action::Item(ItemAction::Wanted(value.as_bool().ok_or(
             RuleError::WrongShape {
                 key: "wanted",
                 expected: "a bool",
             },
-        )?));
+        )?)));
     }
     if let Some(value) = action_table.get("world_source") {
-        actions.push(Action::WorldSource(value.as_bool().ok_or(
-            RuleError::WrongShape {
+        actions.push(Action::Item(ItemAction::WorldSource(
+            value.as_bool().ok_or(RuleError::WrongShape {
                 key: "world_source",
                 expected: "a bool",
-            },
-        )?));
+            })?,
+        )));
     }
     if let Some(value) = action_table.get("propagate") {
-        actions.push(Action::Propagate(parse_propagate(value)?));
+        actions.push(Action::Recipe(RecipeAction::Propagate(parse_propagate(
+            value,
+        )?)));
     }
 
     match actions.len() {
