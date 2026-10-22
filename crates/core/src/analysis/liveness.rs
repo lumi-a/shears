@@ -2,16 +2,16 @@
 //!
 //! ```txt
 //! needed(i) ⟺
-//!   i ∈ wanted OR
+//!   i ∈ required OR
 //!   ∃ recipe r, output o:
 //!     i is an input of r AND
 //!     o is an output of r AND
 //!     needed(o) == true AND
 //!     state(r, o) = propagate
 //! ```
-//! Starting from the wanted items and walking backwards through producers.
+//! Starting from the required items and walking backwards through producers.
 //!
-//! The other alternatives, i.e. starting from non-wanted recipes with no needed
+//! The other alternatives, i.e. starting from non-required recipes with no needed
 //! successors, marking them as dead, and iterating, maintains the self-sustaining
 //! junk-cycles like (stone dust <-> small stone dust). Propagating neededness prevents
 //! this.
@@ -28,8 +28,8 @@ use crate::model::{Graph, ItemIndex, RecipeIndex};
 /// Why an item ended up needed.
 #[derive(Debug)]
 pub enum Why {
-    /// Needed because it's wanted directly. Also explains why it was wanted.
-    Wanted(Cause),
+    /// Needed because it's required directly. Also explains why it was required.
+    Required(Cause),
     /// Needed because `recipe`'s output `output` is needed, with a propagating edge.
     Via {
         /// The recipe that has this item as an input.
@@ -85,7 +85,7 @@ impl Needed {
 
 /// Computes what's needed.
 ///
-/// Reverse BFS from `attrs`'s wanted items, over `graph`'s recipes, and only
+/// Reverse BFS from `attrs`'s required items, over `graph`'s recipes, and only
 /// following edges `edges` marked [`EdgeState::Propagate`].
 ///
 /// # Panics
@@ -105,15 +105,17 @@ pub fn needed(graph: &Graph, attrs: &NodeAttrs, edges: &EdgeStates) -> Needed {
     // Does that make sense?
     let mut queue: VecDeque<ItemIndex> = VecDeque::new();
 
-    for wanted in attrs.wanted_items() {
-        item_bits.insert(wanted.index());
+    for required in attrs.required_items() {
+        item_bits.insert(required.index());
         let cause = attrs
-            .wanted_cause(wanted)
-            .expect("a wanted item always has a cause, set alongside it by NodeAttrs::set_wanted")
+            .required_cause(required)
+            .expect(
+                "a required item always has a cause, set alongside it by NodeAttrs::set_required",
+            )
             .clone();
-        *why.get_mut(wanted.index())
-            .expect("wanted index in bounds for this graph") = Some(Why::Wanted(cause));
-        queue.push_back(wanted);
+        *why.get_mut(required.index())
+            .expect("required index in bounds for this graph") = Some(Why::Required(cause));
+        queue.push_back(required);
     }
 
     while let Some(output_item) = queue.pop_front() {
@@ -165,7 +167,7 @@ fn naive_needed(
     let mut item_bits = FixedBitSet::with_capacity(graph.items().len());
     for position in 0..graph.items().len() {
         let item = ItemIndex::new(u32::try_from(position).expect("item count fits u32"));
-        if attrs.is_wanted(item) {
+        if attrs.is_required(item) {
             item_bits.insert(position);
         }
     }
@@ -218,16 +220,16 @@ mod tests {
     use crate::model::{ItemIndex, RecipeIndex};
 
     #[test]
-    fn marks_wanted_items_and_their_producer_chain_needed() {
-        let (graph, wanted_items) = parse(
+    fn marks_required_items_and_their_producer_chain_needed() {
+        let (graph, required_items) = parse(
             "
-            wanted concrete
+            required concrete
             mix: stone_dust + water -> concrete
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
-        for wanted in wanted_items {
-            attrs.set_wanted(wanted, Cause::Pseudo);
+        for required in required_items {
+            attrs.set_required(required, Cause::Pseudo);
         }
         let edges = EdgeStates::defaults(&graph);
 
@@ -247,7 +249,7 @@ mod tests {
 
         assert!(matches!(
             live.why(concrete),
-            Some(Why::Wanted(Cause::Pseudo))
+            Some(Why::Required(Cause::Pseudo))
         ));
         assert!(matches!(
             live.why(stone_dust),
@@ -256,14 +258,17 @@ mod tests {
     }
 
     #[test]
-    fn stone_dust_cycle_dies_entirely_when_nothing_wants_it() {
-        let (graph, wanted_items) = parse(
+    fn stone_dust_cycle_dies_entirely_when_nothing_is_required() {
+        let (graph, required_items) = parse(
             "
             pack:   4 small_stone_dust -> stone_dust
             unpack: stone_dust -> 4 small_stone_dust
             ",
         );
-        assert!(wanted_items.is_empty(), "no wanted line in this fixture");
+        assert!(
+            required_items.is_empty(),
+            "no required line in this fixture"
+        );
         let attrs = NodeAttrs::defaults(&graph);
         let edges = EdgeStates::defaults(&graph);
 
@@ -279,17 +284,17 @@ mod tests {
 
     #[test]
     fn stone_dust_used_keeps_small_dust_dead_if_packing_is_marked_inert() {
-        let (graph, wanted_items) = parse(
+        let (graph, required_items) = parse(
             "
-            wanted concrete
+            required concrete
             mix:    stone_dust + water -> concrete
             pack:   4 small_stone_dust -> stone_dust
             unpack: stone_dust -> 4 small_stone_dust
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
-        for wanted in wanted_items {
-            attrs.set_wanted(wanted, Cause::Pseudo);
+        for required in required_items {
+            attrs.set_required(required, Cause::Pseudo);
         }
         let mut edges = EdgeStates::defaults(&graph);
 
@@ -301,7 +306,7 @@ mod tests {
         let live = needed(&graph, &attrs, &edges);
 
         // Sorted item order: concrete=0, small_stone_dust=1, stone_dust=2, water=3.
-        assert!(live.is_needed(ItemIndex::new(0)), "concrete: wanted");
+        assert!(live.is_needed(ItemIndex::new(0)), "concrete: required");
         assert!(
             !live.is_needed(ItemIndex::new(1)),
             "small_stone_dust: only reachable through pack's inert edge"
@@ -319,15 +324,15 @@ mod tests {
 
     #[test]
     fn dropped_edge_also_blocks_propagation() {
-        let (graph, wanted_items) = parse(
+        let (graph, required_items) = parse(
             "
-            wanted concrete
+            required concrete
             mix: stone_dust + water -> concrete
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
-        for wanted in wanted_items {
-            attrs.set_wanted(wanted, Cause::Pseudo);
+        for required in required_items {
+            attrs.set_required(required, Cause::Pseudo);
         }
         let mut edges = EdgeStates::defaults(&graph);
         edges.set(RecipeIndex::new(0), 0, EdgeState::Dropped, Cause::Default);
@@ -335,7 +340,7 @@ mod tests {
         let live = needed(&graph, &attrs, &edges);
 
         // Sorted item order: concrete=0, stone_dust=1, water=2.
-        assert!(live.is_needed(ItemIndex::new(0)), "concrete: wanted");
+        assert!(live.is_needed(ItemIndex::new(0)), "concrete: required");
         assert!(!live.is_needed(ItemIndex::new(1)), "mix's edge is dropped");
         assert!(!live.is_needed(ItemIndex::new(2)), "mix's edge is dropped");
         assert!(!live.is_recipe_needed(RecipeIndex::new(0)));
@@ -343,17 +348,17 @@ mod tests {
 
     #[test]
     fn propagates_through_multiple_recipe_hops() {
-        let (graph, wanted_items) = parse(
+        let (graph, required_items) = parse(
             "
-            wanted plate
+            required plate
             press: ingot -> plate
             smelt: ore -> ingot
             mine:  dirt -> ore
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
-        for wanted in wanted_items {
-            attrs.set_wanted(wanted, Cause::Pseudo);
+        for required in required_items {
+            attrs.set_required(required, Cause::Pseudo);
         }
         let edges = EdgeStates::defaults(&graph);
 
@@ -370,7 +375,7 @@ mod tests {
         let press = RecipeIndex::new(1);
         let smelt = RecipeIndex::new(2);
 
-        assert!(live.is_needed(dirt), "three hops from the wanted item");
+        assert!(live.is_needed(dirt), "three hops from the required item");
         assert!(live.is_needed(ingot));
         assert!(live.is_needed(ore));
         assert!(live.is_needed(plate));
@@ -378,7 +383,10 @@ mod tests {
         assert!(live.is_recipe_needed(press));
         assert!(live.is_recipe_needed(smelt));
 
-        assert!(matches!(live.why(plate), Some(Why::Wanted(Cause::Pseudo))));
+        assert!(matches!(
+            live.why(plate),
+            Some(Why::Required(Cause::Pseudo))
+        ));
         assert!(matches!(
             live.why(ingot),
             Some(Why::Via { recipe, output }) if *recipe == press && *output == plate
@@ -395,18 +403,18 @@ mod tests {
 
     #[test]
     fn shortest_path_gets_attributed_by_why() {
-        let (graph, wanted_items) = parse(
+        let (graph, required_items) = parse(
             "
-            wanted a
-            wanted b
+            required a
+            required b
             short: shared -> a
             long1: mid -> b
             long2: shared -> mid
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
-        for wanted in wanted_items {
-            attrs.set_wanted(wanted, Cause::Pseudo);
+        for required in required_items {
+            attrs.set_required(required, Cause::Pseudo);
         }
         let edges = EdgeStates::defaults(&graph);
 
@@ -441,18 +449,18 @@ mod tests {
         }
 
         #[test]
-        fn adding_a_wanted_item_never_shrinks_the_needed_set(
+        fn adding_a_required_item_never_shrinks_the_needed_set(
             (graph, attrs, edges) in arb_graph_attrs_edges(),
-            extra_wanted in 0_usize..9,
+            extra_required in 0_usize..9,
         ) {
-            let extra_wanted_item = ItemIndex::new(
-                u32::try_from(extra_wanted % graph.items().len()).expect("item count fits u32"),
+            let extra_required_item = ItemIndex::new(
+                u32::try_from(extra_required % graph.items().len()).expect("item count fits u32"),
             );
             let before = needed(&graph, &attrs, &edges);
 
-            let mut attrs_with_extra_wanted = attrs;
-            attrs_with_extra_wanted.set_wanted(extra_wanted_item, Cause::Pseudo);
-            let after = needed(&graph, &attrs_with_extra_wanted, &edges);
+            let mut attrs_with_extra_required = attrs;
+            attrs_with_extra_required.set_required(extra_required_item, Cause::Pseudo);
+            let after = needed(&graph, &attrs_with_extra_required, &edges);
 
             for position in 0..graph.items().len() {
                 let item = ItemIndex::new(u32::try_from(position).expect("item count fits u32"));

@@ -66,9 +66,9 @@ mod tests {
 
     #[test]
     fn finds_the_recipe_and_output_position_that_produce_an_item() {
-        let (graph, _wanted) = parse(
+        let (graph, _required) = parse(
             "
-            wanted concrete
+            required concrete
             mix: stone_dust + water -> concrete
             ",
         );
@@ -82,9 +82,9 @@ mod tests {
 
     #[test]
     fn aggregates_producers_across_different_recipes() {
-        let (graph, _wanted) = parse(
+        let (graph, _required) = parse(
             "
-            wanted concrete
+            required concrete
             mix: stone_dust + water -> concrete
             alt: sand + water -> concrete
             ",
@@ -102,9 +102,9 @@ mod tests {
     fn keeps_both_entries_when_one_recipe_outputs_the_same_item_twice() {
         // E.g. a macerator recipe with a guaranteed dust output and a
         // separate chance-based bonus dust output of the same item.
-        let (graph, _wanted) = parse(
+        let (graph, _required) = parse(
             "
-            wanted dust
+            required dust
             macerate: ore -> 2 dust + 13 useless + 1 dust
             ",
         );

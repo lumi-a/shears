@@ -46,18 +46,23 @@ pub(super) fn arb_graph_attrs_edges() -> impl Strategy<Value = (Graph, NodeAttrs
                 prop::collection::vec(any::<bool>(), item_count),
             )
         })
-        .prop_flat_map(|(item_count, raw_recipes, wanted_flags)| {
+        .prop_flat_map(|(item_count, raw_recipes, required_flags)| {
             let total_outputs: usize = raw_recipes.iter().map(|recipe| recipe.outputs.len()).sum();
             (
                 Just(item_count),
                 Just(raw_recipes),
-                Just(wanted_flags),
+                Just(required_flags),
                 prop::collection::vec(arb_edge_state(), total_outputs),
             )
         })
         .prop_map(
-            |(item_count, raw_recipes, wanted_flags, edge_state_choices)| {
-                build(item_count, &raw_recipes, &wanted_flags, edge_state_choices)
+            |(item_count, raw_recipes, required_flags, edge_state_choices)| {
+                build(
+                    item_count,
+                    &raw_recipes,
+                    &required_flags,
+                    edge_state_choices,
+                )
             },
         )
 }
@@ -65,7 +70,7 @@ pub(super) fn arb_graph_attrs_edges() -> impl Strategy<Value = (Graph, NodeAttrs
 fn build(
     item_count: usize,
     raw_recipes: &[RawRecipe],
-    wanted_flags: &[bool],
+    required_flags: &[bool],
     edge_state_choices: Vec<EdgeState>,
 ) -> (Graph, NodeAttrs, EdgeStates) {
     let item_index = |position: usize| {
@@ -126,9 +131,9 @@ fn build(
     }
 
     let mut attrs = NodeAttrs::defaults(&graph);
-    for (position, &is_wanted) in wanted_flags.iter().enumerate() {
-        if is_wanted {
-            attrs.set_wanted(item_index(position), Cause::Pseudo);
+    for (position, &is_required) in required_flags.iter().enumerate() {
+        if is_required {
+            attrs.set_required(item_index(position), Cause::Pseudo);
         }
     }
 

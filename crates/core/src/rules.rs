@@ -1,20 +1,23 @@
 //! Rules set local analysis inputs from `rules.toml`.
 //!
-//! Ordered selector -> action pairs: wanted items, propagation, stage and decomposition.
-//! The last rule to match wins per attribute. Every rule must carry a reason, for the
-//! report's sake.
+//! Ordered selector -> action pairs: required items, propagation, stage and
+//! decomposition. The last rule to match wins per attribute. Every rule must carry a
+//! reason, for the report's sake.
 //!
-//! Settled on "wanted" (opt-in/asserted directly) and "needed" (computed/transitive,
-//! what `liveness.rs`'s `Needed` used to call `Liveness`) over "root"/"alive": in the
-//! natural perception of the recipe-item graph (recipes point to their outputs, inputs
-//! point to their recipes), the things we called "roots" are actually leaves, it's just
-//! that the BFS runs in reverse -- "wanted"/"needed" sidestep that confusion entirely.
+//! "Required" (opt-in, asserted directly by a rule or preset) and "needed" (computed:
+//! `liveness.rs`'s `Needed`, true for every required item and everything that produces
+//! one) replace the earlier "root"/"wanted" and "alive"/"liveness": in the natural
+//! perception of the recipe-item graph (recipes point to their outputs, inputs point to
+//! their recipes), the things we called "roots" are actually leaves, it's just that the
+//! BFS runs in reverse. "Wanted" didn't fix this either -- it reads just as naturally as
+//! the transitive, derived side ("I want gas because I want to drive") as it does the
+//! direct one. "Required" only reads as direct; "needed" was never the confusing half.
 //!
 //! ```toml
 //! [[rule]]
 //! reason = "batteries are useful as inventory items"
 //! filter = { id = "/_battery$/" }
-//! action = { wanted = true }
+//! action = { required = true }
 //!
 //! [[rule]]
 //! reason = "raw ores are obtainable from the world"
@@ -49,8 +52,8 @@ enum Action {
 /// An [`Action`] that applies to every item its rule's selector matches.
 #[derive(Debug)]
 enum ItemAction {
-    /// Marks or unmarks an item as wanted directly.
-    Wanted(bool),
+    /// Marks or unmarks an item as required directly.
+    Required(bool),
     /// Marks or unmarks a world source.
     WorldSource(bool),
 }
@@ -79,8 +82,8 @@ impl ItemAction {
     /// Applies this action to one matching item.
     fn apply_to(&self, attrs: &mut NodeAttrs, item: ItemIndex, cause: &Cause) {
         match *self {
-            Self::Wanted(true) => attrs.set_wanted(item, cause.clone()),
-            Self::Wanted(false) => attrs.clear_wanted(item),
+            Self::Required(true) => attrs.set_required(item, cause.clone()),
+            Self::Required(false) => attrs.clear_required(item),
             Self::WorldSource(true) => attrs.set_world_source(item),
             Self::WorldSource(false) => attrs.clear_world_source(item),
         }
@@ -274,7 +277,7 @@ fn parse_rule(entry: &toml::Value) -> Result<Rule, RuleError> {
 
 /// Parses a rule's `action` table into exactly one [`Action`].
 fn parse_action(action_table: &toml::Table) -> Result<Action, RuleError> {
-    const KNOWN: [&str; 3] = ["wanted", "world_source", "propagate"];
+    const KNOWN: [&str; 3] = ["required", "world_source", "propagate"];
 
     if let Some(unknown) = action_table
         .keys()
@@ -284,10 +287,10 @@ fn parse_action(action_table: &toml::Table) -> Result<Action, RuleError> {
     }
 
     let mut actions = Vec::new();
-    if let Some(value) = action_table.get("wanted") {
-        actions.push(Action::Item(ItemAction::Wanted(value.as_bool().ok_or(
+    if let Some(value) = action_table.get("required") {
+        actions.push(Action::Item(ItemAction::Required(value.as_bool().ok_or(
             RuleError::WrongShape {
-                key: "wanted",
+                key: "required",
                 expected: "a bool",
             },
         )?)));
@@ -392,14 +395,14 @@ mod tests {
     use crate::model::{ItemIndex, RecipeIndex};
 
     #[test]
-    fn wanted_action_marks_matching_items() {
-        let (graph, _wanted) = parse("mix: stone_dust -> gtceu:battery");
+    fn required_action_marks_matching_items() {
+        let (graph, _required) = parse("mix: stone_dust -> gtceu:battery");
         let rules = RuleSet::parse(
             r#"
             [[rule]]
             reason = "batteries are useful"
             filter = { id = "/battery$/" }
-            action = { wanted = true }
+            action = { required = true }
             "#,
         )
         .expect("valid rules");
@@ -409,38 +412,38 @@ mod tests {
         rules.apply(&graph, &mut attrs, &mut edges, 0);
 
         // Sorted item order: gtceu:battery=0, stone_dust=1.
-        assert!(attrs.is_wanted(ItemIndex::new(0)));
-        assert!(!attrs.is_wanted(ItemIndex::new(1)));
+        assert!(attrs.is_required(ItemIndex::new(0)));
+        assert!(!attrs.is_required(ItemIndex::new(1)));
         assert!(matches!(
-            attrs.wanted_cause(ItemIndex::new(0)),
+            attrs.required_cause(ItemIndex::new(0)),
             Some(Cause::Rule { file: 0, index: 0 })
         ));
     }
 
     #[test]
-    fn wanted_false_unmarks_a_preset_wanted_item() {
-        let (graph, _wanted) = parse("mix: stone_dust -> concrete");
+    fn required_false_unmarks_a_preset_required_item() {
+        let (graph, _required) = parse("mix: stone_dust -> concrete");
         let rules = RuleSet::parse(
             r#"
             [[rule]]
             reason = "don't want this one after all"
             filter = { id = "concrete" }
-            action = { wanted = false }
+            action = { required = false }
             "#,
         )
         .expect("valid rules");
         let mut attrs = NodeAttrs::defaults(&graph);
-        attrs.set_wanted(ItemIndex::new(0), Cause::Pseudo);
+        attrs.set_required(ItemIndex::new(0), Cause::Pseudo);
         let mut edges = EdgeStates::defaults(&graph);
 
         rules.apply(&graph, &mut attrs, &mut edges, 0);
 
-        assert!(!attrs.is_wanted(ItemIndex::new(0)));
+        assert!(!attrs.is_required(ItemIndex::new(0)));
     }
 
     #[test]
     fn world_source_action_marks_matching_items() {
-        let (graph, _wanted) = parse("mix: minecraft:iron_ore -> minecraft:iron_ingot");
+        let (graph, _required) = parse("mix: minecraft:iron_ore -> minecraft:iron_ingot");
         let rules = RuleSet::parse(
             r#"
             [[rule]]
@@ -462,7 +465,7 @@ mod tests {
 
     #[test]
     fn propagate_action_sets_every_output_edge() {
-        let (graph, _wanted) = parse("macerate: ore -> 2 dust + 1 dust");
+        let (graph, _required) = parse("macerate: ore -> 2 dust + 1 dust");
         let rules = RuleSet::parse(
             r#"
             [[rule]]
@@ -483,18 +486,18 @@ mod tests {
 
     #[test]
     fn later_rules_win_over_earlier_ones_for_the_same_item() {
-        let (graph, _wanted) = parse("mix: stone_dust -> concrete");
+        let (graph, _required) = parse("mix: stone_dust -> concrete");
         let rules = RuleSet::parse(
             r#"
             [[rule]]
-            reason = "preset: every dust is wanted"
+            reason = "preset: every dust is required"
             filter = { id = "/dust/" }
-            action = { wanted = true }
+            action = { required = true }
 
             [[rule]]
             reason = "local: actually, not this one"
             filter = { id = "stone_dust" }
-            action = { wanted = false }
+            action = { required = false }
             "#,
         )
         .expect("valid rules");
@@ -504,7 +507,7 @@ mod tests {
         rules.apply(&graph, &mut attrs, &mut edges, 0);
 
         // Sorted item order: concrete=0, stone_dust=1.
-        assert!(!attrs.is_wanted(ItemIndex::new(1)), "the later rule wins");
+        assert!(!attrs.is_required(ItemIndex::new(1)), "the later rule wins");
     }
 
     #[test]
@@ -513,7 +516,7 @@ mod tests {
             r#"
             [[rule]]
             filter = { id = "x" }
-            action = { wanted = true }
+            action = { required = true }
             "#,
         );
 
@@ -532,11 +535,11 @@ mod tests {
             [[rule]]
             reason = "nonsense"
             filter = { id = "x" }
-            action = { wanted = true, propagate = "drop" }
+            action = { required = true, propagate = "drop" }
             "#,
         );
 
-        let error = result.expect_err("wanted and propagate together is more than one action");
+        let error = result.expect_err("required and propagate together is more than one action");
         assert!(matches!(
             error,
             RuleError::InRule { position: 0, source } if matches!(*source, RuleError::MultipleActions)

@@ -40,9 +40,9 @@ pub enum Show {
 pub enum Cause {
     /// Nothing has touched this edge/item.
     Default,
-    /// A pseudo-item, marked wanted directly (e.g. the EU pseudo-item for generator
+    /// A pseudo-item, marked required directly (e.g. the EU pseudo-item for generator
     /// fuel). Confirmed needed: `implementation-plan.md`'s `analyze()` pseudocode marks
-    /// these wanted as their own step before the rules loop runs, separate from
+    /// these required as their own step before the rules loop runs, separate from
     /// `Cause::Rule`.
     Pseudo,
     /// A rule from `rules.toml`.
@@ -157,12 +157,12 @@ impl EdgeStates {
 /// Material and form per item, and per-recipe attributes like [`Show`].
 #[derive(Clone, Debug)]
 pub struct NodeAttrs {
-    /// `wanted.contains(item.index())`: whether `item` is wanted directly (opt-in,
+    /// `required.contains(item.index())`: whether `item` is required directly (opt-in,
     /// asserted by a rule or preset), as opposed to merely needed because something
-    /// wanted depends on it.
-    wanted: FixedBitSet,
-    /// `wanted_cause[item.index()]` is why `item` is wanted, if it is.
-    wanted_cause: Vec<Option<Cause>>,
+    /// required depends on it.
+    required: FixedBitSet,
+    /// `required_cause[item.index()]` is why `item` is required, if it is.
+    required_cause: Vec<Option<Cause>>,
     /// `world_source.contains(item.index())`: whether `item` is obtainable
     /// in-world (ore, log, gravel, mob drop, ...).
     ///
@@ -172,72 +172,74 @@ pub struct NodeAttrs {
 }
 
 impl NodeAttrs {
-    /// Nothing is wanted or a world source yet.
+    /// Nothing is required or a world source yet.
     #[inline]
     #[must_use]
     pub fn defaults(graph: &Graph) -> Self {
         let item_count = graph.items().len();
         Self {
-            wanted: FixedBitSet::with_capacity(item_count),
-            wanted_cause: vec![None; item_count],
+            required: FixedBitSet::with_capacity(item_count),
+            required_cause: vec![None; item_count],
             world_source: FixedBitSet::with_capacity(item_count),
         }
     }
 
-    /// Whether `item` is currently wanted directly.
+    /// Whether `item` is currently required directly.
     ///
     /// # Panics
     ///
     /// If `item` is out of bounds for the graph this was built from.
     #[inline]
     #[must_use]
-    pub fn is_wanted(&self, item: ItemIndex) -> bool {
-        self.wanted.contains(item.index())
+    pub fn is_required(&self, item: ItemIndex) -> bool {
+        self.required.contains(item.index())
     }
 
-    /// Why `item` is wanted, if it is.
+    /// Why `item` is required, if it is.
     #[inline]
     #[must_use]
-    pub fn wanted_cause(&self, item: ItemIndex) -> Option<&Cause> {
-        self.wanted_cause.get(item.index()).and_then(Option::as_ref)
+    pub fn required_cause(&self, item: ItemIndex) -> Option<&Cause> {
+        self.required_cause
+            .get(item.index())
+            .and_then(Option::as_ref)
     }
 
-    /// Every item currently marked wanted directly.
+    /// Every item currently marked required directly.
     ///
     /// # Panics
     ///
     /// If this graph has more than `u32::MAX` items.
     #[inline]
-    pub fn wanted_items(&self) -> impl Iterator<Item = ItemIndex> + '_ {
-        self.wanted.ones().map(|position| {
+    pub fn required_items(&self) -> impl Iterator<Item = ItemIndex> + '_ {
+        self.required.ones().map(|position| {
             ItemIndex::new(u32::try_from(position).expect("fewer than u32::MAX items"))
         })
     }
 
-    /// Marks `item` as wanted directly, and why.
+    /// Marks `item` as required directly, and why.
     ///
     /// # Panics
     ///
     /// If `item` is out of bounds for the graph this was built from.
     #[inline]
-    pub fn set_wanted(&mut self, item: ItemIndex, cause: Cause) {
-        self.wanted.insert(item.index());
+    pub fn set_required(&mut self, item: ItemIndex, cause: Cause) {
+        self.required.insert(item.index());
         *self
-            .wanted_cause
+            .required_cause
             .get_mut(item.index())
             .expect("item index in bounds for this graph") = Some(cause);
     }
 
-    /// Unmarks `item` as wanted directly, and clears its cause.
+    /// Unmarks `item` as required directly, and clears its cause.
     ///
     /// # Panics
     ///
     /// If `item` is out of bounds for the graph this was built from.
     #[inline]
-    pub fn clear_wanted(&mut self, item: ItemIndex) {
-        self.wanted.remove(item.index());
+    pub fn clear_required(&mut self, item: ItemIndex) {
+        self.required.remove(item.index());
         *self
-            .wanted_cause
+            .required_cause
             .get_mut(item.index())
             .expect("item index in bounds for this graph") = None;
     }
@@ -282,9 +284,9 @@ mod tests {
 
     #[test]
     fn defaults_are_propagate_with_no_cause_and_shaped_like_the_graph() {
-        let (graph, _wanted) = parse(
+        let (graph, _required) = parse(
             "
-            wanted concrete
+            required concrete
             mix: stone_dust + water -> concrete
             ",
         );
@@ -300,9 +302,9 @@ mod tests {
 
     #[test]
     fn set_updates_state_and_cause_together() {
-        let (graph, _wanted) = parse(
+        let (graph, _required) = parse(
             "
-            wanted concrete
+            required concrete
             mix: stone_dust + water -> concrete
             ",
         );
@@ -325,9 +327,9 @@ mod tests {
     #[test]
     #[should_panic(expected = "output index in bounds")]
     fn state_panics_on_an_out_of_bounds_output() {
-        let (graph, _wanted) = parse(
+        let (graph, _required) = parse(
             "
-            wanted concrete
+            required concrete
             mix: stone_dust + water -> concrete
             ",
         );
@@ -337,18 +339,18 @@ mod tests {
     }
 
     #[test]
-    fn defaults_wanted_and_source_nothing_even_producerless_items() {
-        let (graph, _wanted) = parse(
+    fn defaults_required_and_source_nothing_even_producerless_items() {
+        let (graph, _required) = parse(
             "
-            wanted concrete
+            required concrete
             mix: stone_dust + water -> concrete
             ",
         );
         let attrs = NodeAttrs::defaults(&graph);
 
         // Sorted item order: concrete=0, stone_dust=1, water=2.
-        assert!(!attrs.is_wanted(ItemIndex::new(0)));
-        assert!(attrs.wanted_cause(ItemIndex::new(0)).is_none());
+        assert!(!attrs.is_required(ItemIndex::new(0)));
+        assert!(attrs.required_cause(ItemIndex::new(0)).is_none());
 
         // stone_dust and water have no producer in this fixture.
         assert!(!attrs.is_world_source(ItemIndex::new(0)));
@@ -358,9 +360,9 @@ mod tests {
 
     #[test]
     fn set_world_source_marks_only_that_item() {
-        let (graph, _wanted) = parse(
+        let (graph, _required) = parse(
             "
-            wanted concrete
+            required concrete
             mix: stone_dust + water -> concrete
             ",
         );
@@ -374,50 +376,50 @@ mod tests {
     }
 
     #[test]
-    fn set_wanted_marks_the_item_and_records_the_cause() {
-        let (graph, _wanted) = parse(
+    fn set_required_marks_the_item_and_records_the_cause() {
+        let (graph, _required) = parse(
             "
-            wanted concrete
+            required concrete
             mix: stone_dust + water -> concrete
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
 
-        attrs.set_wanted(ItemIndex::new(1), Cause::Pseudo);
+        attrs.set_required(ItemIndex::new(1), Cause::Pseudo);
 
-        assert!(attrs.is_wanted(ItemIndex::new(1)));
+        assert!(attrs.is_required(ItemIndex::new(1)));
         assert!(matches!(
-            attrs.wanted_cause(ItemIndex::new(1)),
+            attrs.required_cause(ItemIndex::new(1)),
             Some(Cause::Pseudo)
         ));
         assert!(
-            !attrs.is_wanted(ItemIndex::new(0)),
-            "unrelated items stay unwanted"
+            !attrs.is_required(ItemIndex::new(0)),
+            "unrelated items stay unrequired"
         );
     }
 
     #[test]
-    fn clear_wanted_unmarks_the_item_and_its_cause() {
-        let (graph, _wanted) = parse(
+    fn clear_required_unmarks_the_item_and_its_cause() {
+        let (graph, _required) = parse(
             "
-            wanted concrete
+            required concrete
             mix: stone_dust + water -> concrete
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
-        attrs.set_wanted(ItemIndex::new(1), Cause::Pseudo);
+        attrs.set_required(ItemIndex::new(1), Cause::Pseudo);
 
-        attrs.clear_wanted(ItemIndex::new(1));
+        attrs.clear_required(ItemIndex::new(1));
 
-        assert!(!attrs.is_wanted(ItemIndex::new(1)));
-        assert!(attrs.wanted_cause(ItemIndex::new(1)).is_none());
+        assert!(!attrs.is_required(ItemIndex::new(1)));
+        assert!(attrs.required_cause(ItemIndex::new(1)).is_none());
     }
 
     #[test]
     fn clear_world_source_unmarks_only_that_item() {
-        let (graph, _wanted) = parse(
+        let (graph, _required) = parse(
             "
-            wanted concrete
+            required concrete
             mix: stone_dust + water -> concrete
             ",
         );
