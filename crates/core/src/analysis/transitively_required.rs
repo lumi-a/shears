@@ -1,20 +1,20 @@
-//! The liveness computation: which items and recipes are needed.
+//! The computation of which items and recipes are transitively required.
 //!
 //! ```txt
-//! needed(i) ⟺
+//! transitively_required(i) ⟺
 //!   i ∈ required OR
 //!   ∃ recipe r, output o:
 //!     i is an input of r AND
 //!     o is an output of r AND
-//!     needed(o) == true AND
+//!     transitively_required(o) == true AND
 //!     state(r, o) = propagate
 //! ```
 //! Starting from the required items and walking backwards through producers.
 //!
-//! The other alternatives, i.e. starting from non-required recipes with no needed
-//! successors, marking them as dead, and iterating, maintains the self-sustaining
-//! junk-cycles like (stone dust <-> small stone dust). Propagating neededness prevents
-//! this.
+//! The other alternatives, i.e. starting from non-required recipes with no transitively
+//! required successors, marking them as dead, and iterating, maintains the
+//! self-sustaining junk-cycles like (stone dust <-> small stone dust). Propagating
+//! transitive requirement prevents this.
 
 use core::iter::repeat_with;
 use std::collections::VecDeque;
@@ -25,57 +25,61 @@ use super::adjacency::Producers;
 use super::edges::{Cause, EdgeState, EdgeStates, NodeAttrs};
 use crate::model::{Graph, ItemIndex, RecipeIndex};
 
-/// Why an item ended up needed.
+/// Why an item ended up transitively required.
 #[derive(Debug)]
 pub enum Why {
-    /// Needed because it's required directly. Also explains why it was required.
+    /// Transitively required because it's required directly. Also explains why it was
+    /// required.
     Required(Cause),
-    /// Needed because `recipe`'s output `output` is needed, with a propagating edge.
+    /// Transitively required because `recipe`'s output `output` is transitively
+    /// required, with a propagating edge.
     Via {
         /// The recipe that has this item as an input.
         recipe: RecipeIndex,
-        /// The needed output that made this item needed.
+        /// The transitively required output that made this item transitively required.
         output: ItemIndex,
     },
 }
 
-/// The result of [`needed`]: which items and recipes are needed, and why.
+/// The result of [`transitively_required`]: which items and recipes are transitively
+/// required, and why.
 #[derive(Debug)]
-pub struct Needed {
-    /// `item_bits.contains(item.index())`: whether `item` is needed.
+pub struct TransitivelyRequired {
+    /// `item_bits.contains(item.index())`: whether `item` is transitively required.
     item_bits: FixedBitSet,
     /// `recipe_bits.contains(recipe.index())`: whether `recipe` has at
-    /// least one needed output over a propagating edge.
+    /// least one transitively required output over a propagating edge.
     recipe_bits: FixedBitSet,
-    /// `why[item.index()]` is why that item is needed, or `None` if it's dead.
+    /// `why[item.index()]` is why that item is transitively required, or `None` if it's
+    /// dead.
     why: Vec<Option<Why>>,
 }
 
-impl Needed {
-    /// Whether `item` is needed.
+impl TransitivelyRequired {
+    /// Whether `item` is transitively required.
     ///
     /// # Panics
     ///
     /// If `item` is out of bounds for the graph this was computed from.
     #[inline]
     #[must_use]
-    pub fn is_needed(&self, item: ItemIndex) -> bool {
+    pub fn is_transitively_required(&self, item: ItemIndex) -> bool {
         self.item_bits.contains(item.index())
     }
 
     /// Whether `recipe` propagates, i.e. whether at least one of its
-    /// outputs is needed over a propagating edge.
+    /// outputs is transitively required over a propagating edge.
     ///
     /// # Panics
     ///
     /// If `recipe` is out of bounds for the graph this was computed from.
     #[inline]
     #[must_use]
-    pub fn is_recipe_needed(&self, recipe: RecipeIndex) -> bool {
+    pub fn is_recipe_transitively_required(&self, recipe: RecipeIndex) -> bool {
         self.recipe_bits.contains(recipe.index())
     }
 
-    /// Why `item` is needed, or `None` if it's dead.
+    /// Why `item` is transitively required, or `None` if it's dead.
     #[inline]
     #[must_use]
     pub fn why(&self, item: ItemIndex) -> Option<&Why> {
@@ -83,7 +87,7 @@ impl Needed {
     }
 }
 
-/// Computes what's needed.
+/// Computes what's transitively required.
 ///
 /// Reverse BFS from `attrs`'s required items, over `graph`'s recipes, and only
 /// following edges `edges` marked [`EdgeState::Propagate`].
@@ -93,7 +97,11 @@ impl Needed {
 /// If `attrs`, `edges` or their indices weren't built from `graph`.
 #[inline]
 #[must_use]
-pub fn needed(graph: &Graph, attrs: &NodeAttrs, edges: &EdgeStates) -> Needed {
+pub fn transitively_required(
+    graph: &Graph,
+    attrs: &NodeAttrs,
+    edges: &EdgeStates,
+) -> TransitivelyRequired {
     let producers = Producers::build(graph);
 
     let mut item_bits = FixedBitSet::with_capacity(graph.items().len());
@@ -146,20 +154,20 @@ pub fn needed(graph: &Graph, attrs: &NodeAttrs, edges: &EdgeStates) -> Needed {
         }
     }
 
-    Needed {
+    TransitivelyRequired {
         item_bits,
         recipe_bits,
         why,
     }
 }
 
-/// Naive reference version of [`needed`]. Iterates the fixpoint equation to a fixed
-/// point by rescanning every recipe, instead of BFS.
+/// Naive reference version of [`transitively_required`]. Iterates the fixpoint equation
+/// to a fixed point by rescanning every recipe, instead of BFS.
 ///
-/// This is only used to test [`needed`] against a structurally different implementation
-/// of the equation.
+/// This is only used to test [`transitively_required`] against a structurally different
+/// implementation of the equation.
 #[cfg(test)]
-fn naive_needed(
+fn naive_transitively_required(
     graph: &Graph,
     attrs: &NodeAttrs,
     edges: &EdgeStates,
@@ -213,14 +221,14 @@ fn naive_needed(
 mod tests {
     use proptest::prelude::*;
 
-    use super::{naive_needed, needed, Why};
+    use super::{naive_transitively_required, transitively_required, Why};
     use crate::analysis::edges::{Cause, EdgeState, EdgeStates, NodeAttrs};
     use crate::analysis::proptest_support::arb_graph_attrs_edges;
     use crate::graph_dsl::parse;
     use crate::model::{ItemIndex, RecipeIndex};
 
     #[test]
-    fn marks_required_items_and_their_producer_chain_needed() {
+    fn marks_required_items_and_their_producer_chain_transitively_required() {
         let (graph, required_items) = parse(
             "
             required concrete
@@ -233,7 +241,7 @@ mod tests {
         }
         let edges = EdgeStates::defaults(&graph);
 
-        let live = needed(&graph, &attrs, &edges);
+        let live = transitively_required(&graph, &attrs, &edges);
 
         // Sorted item order: concrete=0, stone_dust=1, water=2.
         // Sorted recipe order: mix=0.
@@ -242,10 +250,10 @@ mod tests {
         let water = ItemIndex::new(2);
         let mix = RecipeIndex::new(0);
 
-        assert!(live.is_needed(concrete));
-        assert!(live.is_needed(stone_dust));
-        assert!(live.is_needed(water));
-        assert!(live.is_recipe_needed(mix));
+        assert!(live.is_transitively_required(concrete));
+        assert!(live.is_transitively_required(stone_dust));
+        assert!(live.is_transitively_required(water));
+        assert!(live.is_recipe_transitively_required(mix));
 
         assert!(matches!(
             live.why(concrete),
@@ -272,14 +280,14 @@ mod tests {
         let attrs = NodeAttrs::defaults(&graph);
         let edges = EdgeStates::defaults(&graph);
 
-        let live = needed(&graph, &attrs, &edges);
+        let live = transitively_required(&graph, &attrs, &edges);
 
         // Sorted item order: small_stone_dust=0, stone_dust=1.
         // Sorted recipe order: pack=0, unpack=1.
-        assert!(!live.is_needed(ItemIndex::new(0)));
-        assert!(!live.is_needed(ItemIndex::new(1)));
-        assert!(!live.is_recipe_needed(RecipeIndex::new(0)));
-        assert!(!live.is_recipe_needed(RecipeIndex::new(1)));
+        assert!(!live.is_transitively_required(ItemIndex::new(0)));
+        assert!(!live.is_transitively_required(ItemIndex::new(1)));
+        assert!(!live.is_recipe_transitively_required(RecipeIndex::new(0)));
+        assert!(!live.is_recipe_transitively_required(RecipeIndex::new(1)));
     }
 
     #[test]
@@ -303,22 +311,37 @@ mod tests {
         let pack = RecipeIndex::new(1);
         edges.set(pack, 0, EdgeState::Inert, Cause::Default);
 
-        let live = needed(&graph, &attrs, &edges);
+        let live = transitively_required(&graph, &attrs, &edges);
 
         // Sorted item order: concrete=0, small_stone_dust=1, stone_dust=2, water=3.
-        assert!(live.is_needed(ItemIndex::new(0)), "concrete: required");
         assert!(
-            !live.is_needed(ItemIndex::new(1)),
+            live.is_transitively_required(ItemIndex::new(0)),
+            "concrete: required"
+        );
+        assert!(
+            !live.is_transitively_required(ItemIndex::new(1)),
             "small_stone_dust: only reachable through pack's inert edge"
         );
-        assert!(live.is_needed(ItemIndex::new(2)), "stone_dust: used by mix");
-        assert!(live.is_needed(ItemIndex::new(3)), "water: used by mix");
-
-        assert!(live.is_recipe_needed(RecipeIndex::new(0)), "mix propagates");
-        assert!(!live.is_recipe_needed(pack), "pack's only edge is inert");
         assert!(
-            !live.is_recipe_needed(RecipeIndex::new(2)),
-            "unpack's output never becomes needed"
+            live.is_transitively_required(ItemIndex::new(2)),
+            "stone_dust: used by mix"
+        );
+        assert!(
+            live.is_transitively_required(ItemIndex::new(3)),
+            "water: used by mix"
+        );
+
+        assert!(
+            live.is_recipe_transitively_required(RecipeIndex::new(0)),
+            "mix propagates"
+        );
+        assert!(
+            !live.is_recipe_transitively_required(pack),
+            "pack's only edge is inert"
+        );
+        assert!(
+            !live.is_recipe_transitively_required(RecipeIndex::new(2)),
+            "unpack's output never becomes transitively required"
         );
     }
 
@@ -337,13 +360,22 @@ mod tests {
         let mut edges = EdgeStates::defaults(&graph);
         edges.set(RecipeIndex::new(0), 0, EdgeState::Dropped, Cause::Default);
 
-        let live = needed(&graph, &attrs, &edges);
+        let live = transitively_required(&graph, &attrs, &edges);
 
         // Sorted item order: concrete=0, stone_dust=1, water=2.
-        assert!(live.is_needed(ItemIndex::new(0)), "concrete: required");
-        assert!(!live.is_needed(ItemIndex::new(1)), "mix's edge is dropped");
-        assert!(!live.is_needed(ItemIndex::new(2)), "mix's edge is dropped");
-        assert!(!live.is_recipe_needed(RecipeIndex::new(0)));
+        assert!(
+            live.is_transitively_required(ItemIndex::new(0)),
+            "concrete: required"
+        );
+        assert!(
+            !live.is_transitively_required(ItemIndex::new(1)),
+            "mix's edge is dropped"
+        );
+        assert!(
+            !live.is_transitively_required(ItemIndex::new(2)),
+            "mix's edge is dropped"
+        );
+        assert!(!live.is_recipe_transitively_required(RecipeIndex::new(0)));
     }
 
     #[test]
@@ -362,7 +394,7 @@ mod tests {
         }
         let edges = EdgeStates::defaults(&graph);
 
-        let live = needed(&graph, &attrs, &edges);
+        let live = transitively_required(&graph, &attrs, &edges);
 
         // Sorted item order: dirt=0, ingot=1, ore=2, plate=3.
         let dirt = ItemIndex::new(0);
@@ -375,13 +407,16 @@ mod tests {
         let press = RecipeIndex::new(1);
         let smelt = RecipeIndex::new(2);
 
-        assert!(live.is_needed(dirt), "three hops from the required item");
-        assert!(live.is_needed(ingot));
-        assert!(live.is_needed(ore));
-        assert!(live.is_needed(plate));
-        assert!(live.is_recipe_needed(mine));
-        assert!(live.is_recipe_needed(press));
-        assert!(live.is_recipe_needed(smelt));
+        assert!(
+            live.is_transitively_required(dirt),
+            "three hops from the required item"
+        );
+        assert!(live.is_transitively_required(ingot));
+        assert!(live.is_transitively_required(ore));
+        assert!(live.is_transitively_required(plate));
+        assert!(live.is_recipe_transitively_required(mine));
+        assert!(live.is_recipe_transitively_required(press));
+        assert!(live.is_recipe_transitively_required(smelt));
 
         assert!(matches!(
             live.why(plate),
@@ -418,7 +453,7 @@ mod tests {
         }
         let edges = EdgeStates::defaults(&graph);
 
-        let live = needed(&graph, &attrs, &edges);
+        let live = transitively_required(&graph, &attrs, &edges);
 
         // Sorted item order: a=0, b=1, mid=2, shared=3.
         let a = ItemIndex::new(0);
@@ -435,43 +470,43 @@ mod tests {
     proptest! {
         #[test]
         fn matches_the_naive_fixpoint_oracle((graph, attrs, edges) in arb_graph_attrs_edges()) {
-            let live = needed(&graph, &attrs, &edges);
-            let (oracle_needed_item, oracle_needed_recipe) = naive_needed(&graph, &attrs, &edges);
+            let live = transitively_required(&graph, &attrs, &edges);
+            let (oracle_item, oracle_recipe) = naive_transitively_required(&graph, &attrs, &edges);
 
             for position in 0..graph.items().len() {
                 let item = ItemIndex::new(u32::try_from(position).expect("item count fits u32"));
-                prop_assert_eq!(live.is_needed(item), oracle_needed_item.contains(position));
+                prop_assert_eq!(live.is_transitively_required(item), oracle_item.contains(position));
             }
             for position in 0..graph.recipes().len() {
                 let recipe = RecipeIndex::new(u32::try_from(position).expect("recipe count fits u32"));
-                prop_assert_eq!(live.is_recipe_needed(recipe), oracle_needed_recipe.contains(position));
+                prop_assert_eq!(live.is_recipe_transitively_required(recipe), oracle_recipe.contains(position));
             }
         }
 
         #[test]
-        fn adding_a_required_item_never_shrinks_the_needed_set(
+        fn adding_a_required_item_never_shrinks_the_transitively_required_set(
             (graph, attrs, edges) in arb_graph_attrs_edges(),
             extra_required in 0_usize..9,
         ) {
             let extra_required_item = ItemIndex::new(
                 u32::try_from(extra_required % graph.items().len()).expect("item count fits u32"),
             );
-            let before = needed(&graph, &attrs, &edges);
+            let before = transitively_required(&graph, &attrs, &edges);
 
             let mut attrs_with_extra_required = attrs;
             attrs_with_extra_required.set_required(extra_required_item, Cause::Pseudo);
-            let after = needed(&graph, &attrs_with_extra_required, &edges);
+            let after = transitively_required(&graph, &attrs_with_extra_required, &edges);
 
             for position in 0..graph.items().len() {
                 let item = ItemIndex::new(u32::try_from(position).expect("item count fits u32"));
-                if before.is_needed(item) {
-                    prop_assert!(after.is_needed(item));
+                if before.is_transitively_required(item) {
+                    prop_assert!(after.is_transitively_required(item));
                 }
             }
         }
 
         #[test]
-        fn dropping_an_edge_never_grows_the_needed_set(
+        fn dropping_an_edge_never_grows_the_transitively_required_set(
             (graph, attrs, edges) in arb_graph_attrs_edges(),
             edge_pick in 0_usize..27,
         ) {
@@ -492,17 +527,17 @@ mod tests {
             let recipe = RecipeIndex::new(u32::try_from(recipe_position).expect("recipe count fits u32"));
             let output = u8::try_from(output_position).expect("outputs per recipe fit u8");
 
-            let before = needed(&graph, &attrs, &edges);
+            let before = transitively_required(&graph, &attrs, &edges);
 
             let mut edges_with_drop = edges;
             let cause = edges_with_drop.cause(recipe, output).clone();
             edges_with_drop.set(recipe, output, EdgeState::Dropped, cause);
-            let after = needed(&graph, &attrs, &edges_with_drop);
+            let after = transitively_required(&graph, &attrs, &edges_with_drop);
 
             for position in 0..graph.items().len() {
                 let item = ItemIndex::new(u32::try_from(position).expect("item count fits u32"));
-                if after.is_needed(item) {
-                    prop_assert!(before.is_needed(item));
+                if after.is_transitively_required(item) {
+                    prop_assert!(before.is_transitively_required(item));
                 }
             }
         }

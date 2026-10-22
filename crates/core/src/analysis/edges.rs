@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{Graph, ItemIndex, RecipeIndex};
 
-/// What a single `(recipe, output)` edge does for neededness propagation.
+/// What a single `(recipe, output)` edge does for transitive-requirement propagation.
 ///
 /// TODO: This probably won't be sufficient later on. Later on, we'll probably want to
 /// have things like "This edge is only useful in LV, but not in MV+", or "This edge is
@@ -15,16 +15,19 @@ use crate::model::{Graph, ItemIndex, RecipeIndex};
 /// specified by the user, i.e. not known at compile-time.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum EdgeState {
-    /// Normal: a needed output on this edge makes the recipe's inputs needed too.
+    /// Normal: a transitively required output on this edge makes the recipe's inputs
+    /// transitively required too.
     Propagate,
-    /// Output exists, but doesn't make the recipe's inputs needed on its own.
+    /// Output exists, but doesn't make the recipe's inputs transitively required on its
+    /// own.
     Inert,
     /// Treated as if the recipe couldn't produce this output at all.
     /// Usually, this state is assigned for `(recipe, *)`, to drop the recipe entirely.
     Dropped,
 }
 
-/// Whether a recipe should be considered for visibility regardless of neededness.
+/// Whether a recipe should be considered for visibility regardless of transitive
+/// requirement.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Show {
     /// Shown if it has a visible output on a non-dropped edge.
@@ -53,7 +56,7 @@ pub enum Cause {
     Rule {
         /// Which rules file, in load order (presets first, then local).
         file: u16,
-        /// Which of that file's two rule arrays (item or recype) this came from.
+        /// Which of that file's two rule arrays (item or recipe) this came from.
         kind: RuleKind,
         /// The rule's position within that array.
         index: u32,
@@ -175,8 +178,8 @@ impl EdgeStates {
 #[derive(Clone, Debug)]
 pub struct NodeAttrs {
     /// `required.contains(item.index())`: whether `item` is required directly (opt-in,
-    /// asserted by a rule or preset), as opposed to merely needed because something
-    /// required depends on it.
+    /// asserted by a rule or preset), as opposed to merely transitively required because
+    /// something required depends on it.
     required: FixedBitSet,
     /// `required_cause[item.index()]` is why `item` is required, if it is.
     required_cause: Vec<Option<Cause>>,

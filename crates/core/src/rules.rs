@@ -22,7 +22,7 @@
 //! action = { world_source = true }
 //!
 //! [[recipe-rule]]
-//! reason = "recycling shouldn't keep anything else needed"
+//! reason = "recycling shouldn't keep anything else transitively required"
 //! filter = { type = "gtceu:macerator" }
 //! action = { propagate = "drop" }
 //! ```
