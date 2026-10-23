@@ -61,6 +61,30 @@ impl Context {
     }
 }
 
+/// Which selector keys [`parse_clause`] accepts in which [`Context`]s.
+const KEY_CONTEXTS: &[(&str, &[Context])] = &[
+    (
+        "not",
+        &[Context::Item, Context::Recipe, Context::InputMember],
+    ),
+    (
+        "id",
+        &[Context::Item, Context::Recipe, Context::InputMember],
+    ),
+    (
+        "mod",
+        &[Context::Item, Context::Recipe, Context::InputMember],
+    ),
+    (
+        "type",
+        &[Context::Item, Context::Recipe, Context::InputMember],
+    ),
+    ("tag", &[Context::Item, Context::InputMember]),
+    ("has_input", &[Context::Recipe]),
+    ("has_output", &[Context::Recipe]),
+    ("is_catalyst", &[Context::InputMember]),
+];
+
 /// An exact id, or a `/regex/`-wrapped pattern.
 #[derive(Debug)]
 pub enum Pattern {
@@ -229,11 +253,24 @@ fn parse_table(table: &toml::Table, context: Context) -> Result<Selector, Select
 }
 
 /// Parses one `key = value` entry of a selector table.
+#[expect(
+    clippy::unreachable,
+    reason = "key was already validated against KEY_CONTEXTS above"
+)]
 fn parse_clause(
-    key: &str,
+    raw_key: &str,
     value: &toml::Value,
     context: Context,
 ) -> Result<Selector, SelectorError> {
+    let (key, allowed_contexts) = KEY_CONTEXTS
+        .iter()
+        .find(|(candidate, _)| *candidate == raw_key)
+        .copied()
+        .ok_or_else(|| SelectorError::UnknownKey(raw_key.to_owned()))?;
+    if !allowed_contexts.contains(&context) {
+        return Err(SelectorError::WrongContext { key, context });
+    }
+
     match key {
         "not" => parse(value, context).map(|inner| Selector::Not(Box::new(inner))),
         "id" => string_value(value, "id")
@@ -243,23 +280,15 @@ fn parse_clause(
         "type" => string_value(value, "type")
             .and_then(Pattern::parse)
             .map(Selector::Type),
-        "tag" => {
-            require_item_like_context(context, "tag")?;
-            string_value(value, "tag").map(|tag| Selector::Tag(tag.to_owned()))
-        }
+        "tag" => string_value(value, "tag").map(|tag| Selector::Tag(tag.to_owned())),
         "has_input" => {
-            require_context(context, Context::Recipe, "has_input")?;
             parse(value, Context::InputMember).map(|inner| Selector::Input(Box::new(inner)))
         }
-        "has_output" => {
-            require_context(context, Context::Recipe, "has_output")?;
-            parse(value, Context::Item).map(|inner| Selector::Output(Box::new(inner)))
-        }
-        "is_catalyst" => {
-            require_context(context, Context::InputMember, "is_catalyst")?;
-            bool_value(value, "is_catalyst").map(Selector::IsCatalyst)
-        }
-        other => Err(SelectorError::UnknownKey(other.to_owned())),
+        "has_output" => parse(value, Context::Item).map(|inner| Selector::Output(Box::new(inner))),
+        "is_catalyst" => bool_value(value, "is_catalyst").map(Selector::IsCatalyst),
+        _ => unreachable!("key was just looked up in KEY_CONTEXTS"),
+        // TODO: Is there no way to rustily exhaustively check a vector of strings?
+        // e.g. by using a hashmap instead of a vector?
     }
 }
 
@@ -277,31 +306,6 @@ fn bool_value(value: &toml::Value, key: &'static str) -> Result<bool, SelectorEr
         key,
         expected: "a bool",
     })
-}
-
-/// Errors unless `context` is `expected`.
-fn require_context(
-    context: Context,
-    expected: Context,
-    key: &'static str,
-) -> Result<(), SelectorError> {
-    if context == expected {
-        Ok(())
-    } else {
-        Err(SelectorError::WrongContext { key, context })
-    }
-}
-
-/// Errors unless `context` allows item-identity keys (`id`, `mod`, `type`, `tag`): an
-/// item selector, or `has_input`'s nested [`Context::InputMember`] selector.
-const fn require_item_like_context(
-    context: Context,
-    key: &'static str,
-) -> Result<(), SelectorError> {
-    match context {
-        Context::Item | Context::InputMember => Ok(()),
-        Context::Recipe => Err(SelectorError::WrongContext { key, context }),
-    }
 }
 
 /// The namespace part of an id, i.e. everything before the first `:`.
