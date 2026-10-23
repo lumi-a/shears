@@ -5,6 +5,7 @@
 
 pub mod adjacency;
 pub mod edges;
+pub mod explain;
 pub mod transitively_required;
 
 #[cfg(test)]
