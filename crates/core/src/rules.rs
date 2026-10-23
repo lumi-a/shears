@@ -25,7 +25,17 @@
 //! reason = "recycling shouldn't keep anything else transitively required"
 //! filter = { type = "gtceu:macerator" }
 //! action = { propagate = "drop" }
+//!
+//! [[recipe-rule]]
+//! reason = "cobblestone from the macerator is junk, but keep the ore dust"
+//! filter = { type = "gtceu:macerator" }
+//! apply_to_output = { id = "minecraft:cobblestone" }
+//! action = { propagate = "drop" }
 //! ```
+//!
+//! `apply_to_output`, only valid on `[[recipe-rule]]`, narrows `propagate` to just the
+//! matched recipe's outputs matching it, instead of every output; omitting it keeps
+//! the every-output default.
 //!
 //! TODO: Describe the above examples better.
 
@@ -51,10 +61,10 @@ enum ItemAction {
 /// What one `[[recipe-rule]]` does to every recipe its selector matches.
 #[derive(Debug)]
 enum RecipeAction {
-    /// Sets every output edge's propagation state.
+    /// Sets every matching output edge's propagation state.
     ///
-    /// TODO: At some point, we'll probably want to be able to match individual (recipe,
-    /// output) tuples, instead of just recipes?
+    /// See `apply_to_output` on `[[recipe-rule]]` to narrow which outputs match, instead
+    /// of matching all of them.
     Propagate(EdgeState),
 }
 
@@ -73,17 +83,30 @@ impl ItemAction {
 impl RecipeAction {
     /// Applies this action to one matching recipe.
     ///
+    /// `output_filter` (if set) narrows this to only the recipe's outputs matching it.
+    ///
     /// # Panics
     ///
     /// If `recipe` has `u8::MAX` or more outputs.
-    fn apply_to(&self, graph: &Graph, edges: &mut EdgeStates, recipe: RecipeIndex, cause: &Cause) {
+    fn apply_to(
+        &self,
+        graph: &Graph,
+        edges: &mut EdgeStates,
+        recipe: RecipeIndex,
+        output_filter: Option<&Selector>,
+        cause: &Cause,
+    ) {
         match *self {
             Self::Propagate(state) => {
-                let output_count = graph.recipe(recipe).outputs().len();
-                for output_position in 0..output_count {
-                    let output = u8::try_from(output_position)
+                for (output_position, output) in graph.recipe(recipe).outputs().iter().enumerate() {
+                    if output_filter
+                        .is_some_and(|filter| !selector::matches_item(filter, graph, output.item()))
+                    {
+                        continue;
+                    }
+                    let output_index = u8::try_from(output_position)
                         .expect("fewer than u8::MAX outputs per recipe");
-                    edges.set(recipe, output, state, cause.clone());
+                    edges.set(recipe, output_index, state, cause.clone());
                 }
             }
         }
@@ -140,17 +163,32 @@ impl RawRecipeAction {
     }
 }
 
-/// One `[[item-rule]]` or `[[recipe-rule]]` table, raw: `filter` isn't resolved into a
-/// [`Selector`] yet, and `action` isn't turned into concrete actions yet.
+/// One `[[item-rule]]` table. `filter` isn't resolved into a [`Selector`] yet, and
+/// `action` isn't turned into concrete actions yet.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RawRule<A> {
+struct RawItemRule {
     /// The reason behind this rule.
     reason: String,
     /// What this rule applies to. Still raw; not yet resolved into a [`Selector`].
     filter: toml::Value,
     /// What it sets on every match.
-    action: A,
+    action: RawItemAction,
+}
+
+/// One `[[recipe-rule]]` table, raw.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawRecipeRule {
+    /// The reason behind this rule.
+    reason: String,
+    /// What this rule applies to. Still raw; not yet resolved into a [`Selector`].
+    filter: toml::Value,
+    /// Narrows the action to only the matched recipe's outputs matching this, instead
+    /// of every output.
+    apply_to_output: Option<toml::Value>,
+    /// What it sets on every match.
+    action: RawRecipeAction,
 }
 
 /// A `rules.toml` document's `[[item-rule]]` and `[[recipe-rule]]` entries.
@@ -159,18 +197,16 @@ struct RawRule<A> {
 struct RawDocument {
     /// Every `[[item-rule]]` entry, in file order.
     #[serde(rename = "item-rule", default)]
-    item_rule: Vec<RawRule<RawItemAction>>,
+    item_rule: Vec<RawItemRule>,
     /// Every `[[recipe-rule]]` entry, in file order.
     #[serde(rename = "recipe-rule", default)]
-    recipe_rule: Vec<RawRule<RawRecipeAction>>,
+    recipe_rule: Vec<RawRecipeRule>,
 }
 
-/// One `[[item-rule]]` or `[[recipe-rule]]` entry, consisting of a selector, every
-/// action it sets on each match, and why it does so.
-///
-/// TODO: Should we use a sum type instead of being generic on `<A>`?
+/// One `[[item-rule]]` entry, consisting of a selector, every action it sets on each
+/// match, and why it does so.
 #[derive(Debug)]
-struct Rule<A> {
+struct ItemRule {
     /// The reason behind this rule.
     #[expect(dead_code, reason = "read by the explain.rs report eventually™")]
     reason: String,
@@ -178,7 +214,23 @@ struct Rule<A> {
     selector: Selector,
     /// What it sets on every match, in file order. Empty is valid, though it does
     /// nothing, and [`RuleSet::parse`] reports this case as a warning.
-    actions: Vec<A>,
+    actions: Vec<ItemAction>,
+}
+
+/// One `[[recipe-rule]]` entry.
+#[derive(Debug)]
+struct RecipeRule {
+    /// The reason behind this rule.
+    #[expect(dead_code, reason = "read by the explain.rs report eventually™")]
+    reason: String,
+    /// What this rule applies to.
+    selector: Selector,
+    /// Narrows the action to only the matched recipe's outputs matching this, instead
+    /// of every output. `None` means every output.
+    output_filter: Option<Selector>,
+    /// What it sets on every match, in file order. Empty is valid, though it does
+    /// nothing, and [`RuleSet::parse`] reports this case as a warning.
+    actions: Vec<RecipeAction>,
 }
 
 // TODO: The performance of for_each_matching_item and for_each_matching_recipe aren't
@@ -223,9 +275,9 @@ fn for_each_matching_recipe(
 #[derive(Debug, Default)]
 pub struct RuleSet {
     /// Every `[[item-rule]]` entry, in file order.
-    item_rules: Vec<Rule<ItemAction>>,
+    item_rules: Vec<ItemRule>,
     /// Every `[[recipe-rule]]` entry, in file order.
-    recipe_rules: Vec<Rule<RecipeAction>>,
+    recipe_rules: Vec<RecipeRule>,
     /// Human-readable warnings about things that parsed fine but are probably mistakes,
     /// e.g. an `action` table that sets nothing.
     ///
@@ -276,7 +328,7 @@ impl RuleSet {
                         source: Box::new(RuleError::Selector(cause)),
                     }
                 })?;
-                Ok(Rule {
+                Ok(ItemRule {
                     reason: raw.reason,
                     selector,
                     actions,
@@ -309,9 +361,19 @@ impl RuleSet {
                         source: Box::new(RuleError::Selector(cause)),
                     }
                 })?;
-                Ok(Rule {
+                let output_filter = raw
+                    .apply_to_output
+                    .map(|value| selector::parse(&value, Context::Item))
+                    .transpose()
+                    .map_err(|cause| RuleError::InRule {
+                        array: "recipe-rule",
+                        position,
+                        source: Box::new(RuleError::Selector(cause)),
+                    })?;
+                Ok(RecipeRule {
                     reason: raw.reason,
                     selector,
+                    output_filter,
                     actions,
                 })
             })
@@ -372,7 +434,7 @@ impl RuleSet {
             };
             for_each_matching_recipe(graph, &rule.selector, |recipe| {
                 for action in &rule.actions {
-                    action.apply_to(graph, edges, recipe, &cause);
+                    action.apply_to(graph, edges, recipe, rule.output_filter.as_ref(), &cause);
                 }
             });
         }
@@ -559,11 +621,13 @@ mod tests {
 
         assert!(!attrs.is_required(ItemIndex::new(0)), "nothing was set");
         assert_eq!(rules.warnings().len(), 1);
-        assert!(rules
-            .warnings()
-            .first()
-            .expect("exactly one warning")
-            .contains("item-rule[0]"));
+        assert!(
+            rules
+                .warnings()
+                .first()
+                .expect("exactly one warning")
+                .contains("item-rule[0]")
+        );
     }
 
     #[test]
@@ -585,6 +649,57 @@ mod tests {
 
         assert_eq!(edges.state(RecipeIndex::new(0), 0), EdgeState::Dropped);
         assert_eq!(edges.state(RecipeIndex::new(0), 1), EdgeState::Dropped);
+    }
+
+    #[test]
+    fn apply_to_output_scopes_propagate_to_matching_outputs() {
+        let (graph, _required) = parse("macerate: ore -> cobblestone + dust");
+        let rules = RuleSet::parse(
+            r#"
+            [[recipe-rule]]
+            reason = "cobblestone from the macerator is junk, but keep the ore dust"
+            filter = { id = "macerate" }
+            apply_to_output = { id = "cobblestone" }
+            action = { propagate = "drop" }
+            "#,
+        )
+        .expect("valid rules");
+        let mut attrs = NodeAttrs::defaults(&graph);
+        let mut edges = EdgeStates::defaults(&graph);
+
+        rules.apply(&graph, &mut attrs, &mut edges, 0);
+
+        // Outputs keep the order they were written in: cobblestone=0, dust=1.
+        assert_eq!(
+            edges.state(RecipeIndex::new(0), 0),
+            EdgeState::Dropped,
+            "cobblestone matched apply_to_output"
+        );
+        assert_eq!(
+            edges.state(RecipeIndex::new(0), 1),
+            EdgeState::Propagate,
+            "dust didn't match apply_to_output, so it's untouched"
+        );
+    }
+
+    #[test]
+    fn apply_to_output_on_item_rule_is_unknown() {
+        let result = RuleSet::parse(
+            r#"
+            [[item-rule]]
+            reason = "nonsense"
+            filter = { id = "x" }
+            apply_to_output = { id = "y" }
+            action = { required = true }
+            "#,
+        );
+
+        let error = result.expect_err("apply_to_output isn't a recognized item-rule field");
+        let message = error.to_string();
+        assert!(
+            message.contains("item-rule[0]") && message.contains("apply_to_output"),
+            "expected the entry's path and the offending key, got: {message}"
+        );
     }
 
     #[test]
