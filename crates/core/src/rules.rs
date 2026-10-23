@@ -208,7 +208,6 @@ struct RawDocument {
 #[derive(Debug)]
 struct ItemRule {
     /// The reason behind this rule.
-    #[expect(dead_code, reason = "read by the explain.rs report eventually™")]
     reason: String,
     /// What this rule applies to.
     selector: Selector,
@@ -221,7 +220,6 @@ struct ItemRule {
 #[derive(Debug)]
 struct RecipeRule {
     /// The reason behind this rule.
-    #[expect(dead_code, reason = "read by the explain.rs report eventually™")]
     reason: String,
     /// What this rule applies to.
     selector: Selector,
@@ -391,6 +389,24 @@ impl RuleSet {
     #[must_use]
     pub fn warnings(&self) -> &[String] {
         &self.warnings
+    }
+
+    /// The reason behind the `index`-th rule of kind `kind`, if that rule exists in this
+    /// set. For `explain`'s sake, to turn a [`Cause::Rule`] back into report text.
+    #[inline]
+    #[must_use]
+    pub fn reason(&self, kind: RuleKind, index: u32) -> Option<&str> {
+        let position = usize::try_from(index).ok()?;
+        match kind {
+            RuleKind::Item => self
+                .item_rules
+                .get(position)
+                .map(|rule| rule.reason.as_str()),
+            RuleKind::Recipe => self
+                .recipe_rules
+                .get(position)
+                .map(|rule| rule.reason.as_str()),
+        }
     }
 
     /// Applies every rule in order.
@@ -799,6 +815,39 @@ mod tests {
         assert!(
             !attrs.is_required(ItemIndex::new(0)),
             "nothing marked it required"
+        );
+    }
+
+    #[test]
+    fn reason_looks_up_by_kind_and_position() {
+        let rules = RuleSet::parse(
+            r#"
+            [[item-rule]]
+            reason = "batteries are useful"
+            filter = { id = "x" }
+            action = { required = true }
+
+            [[recipe-rule]]
+            reason = "recycling shouldn't keep anything else required"
+            filter = { id = "y" }
+            action = { propagate = "drop" }
+            "#,
+        )
+        .expect("valid rules");
+
+        assert_eq!(
+            rules.reason(RuleKind::Item, 0),
+            Some("batteries are useful")
+        );
+        assert_eq!(
+            rules.reason(RuleKind::Recipe, 0),
+            Some("recycling shouldn't keep anything else required")
+        );
+        assert_eq!(rules.reason(RuleKind::Item, 1), None, "no such item-rule");
+        assert_eq!(
+            rules.reason(RuleKind::Recipe, 1),
+            None,
+            "no such recipe-rule"
         );
     }
 }
