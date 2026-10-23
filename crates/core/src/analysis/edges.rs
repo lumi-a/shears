@@ -13,6 +13,10 @@ use crate::model::{Graph, ItemIndex, RecipeIndex};
 /// have things like "This edge is only useful in LV, but not in MV+", or "This edge is
 /// only useful for builders, but not for technical aspects", and these states should be
 /// specified by the user, i.e. not known at compile-time.
+///
+/// TODO: What's the current functional difference between `Inert` and `Dropped`? If one
+/// of them is redundant, we could change this (and that'd also make the parsing for the
+/// propagate action easier, as it would just be a boolean)
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum EdgeState {
     /// Normal: a transitively required output on this edge makes the recipe's inputs

@@ -31,8 +31,10 @@
 
 pub mod selector;
 
-use selector::{Context, Selector, SelectorError};
+use serde::Deserialize;
 use toml::de::Error as TomlError;
+
+use selector::{Context, Selector, SelectorError};
 
 use crate::analysis::edges::{Cause, EdgeState, EdgeStates, NodeAttrs, RuleKind};
 use crate::model::{Graph, ItemIndex, RecipeIndex};
@@ -88,8 +90,83 @@ impl RecipeAction {
     }
 }
 
-/// One `[[item-rule]]` or `[[recipe-rule]]` entry, consisting of a selector, the action
-/// it sets on every match, and why it does so.
+/// An `[[item-rule]]`'s `action` table.
+///
+/// Every recognized key is optional, and any number may be set at once.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawItemAction {
+    /// Marks or unmarks matching items as directly required, if set.
+    required: Option<bool>,
+    /// Marks or unmarks matching items as a world source, if set.
+    world_source: Option<bool>,
+}
+
+impl RawItemAction {
+    /// Turns the fields that were set into [`ItemAction`]s, in a fixed order so applying
+    /// them is deterministic.
+    fn into_actions(self) -> Vec<ItemAction> {
+        let mut actions = Vec::new();
+        if let Some(value) = self.required {
+            actions.push(ItemAction::Required(value));
+        }
+        if let Some(value) = self.world_source {
+            actions.push(ItemAction::WorldSource(value));
+        }
+        actions
+    }
+}
+
+/// A `[[recipe-rule]]`'s `action` table.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawRecipeAction {
+    /// Sets every output edge's propagation state, if the `Option` isn't `None`.
+    propagate: Option<toml::Value>,
+}
+
+impl RawRecipeAction {
+    /// Turns the fields that were set into [`RecipeAction`]s.
+    ///
+    /// # Errors
+    ///
+    /// If `propagate`'s value isn't `true`, `"inert"`, or `"drop"`.
+    fn into_actions(self) -> Result<Vec<RecipeAction>, RuleError> {
+        let mut actions = Vec::new();
+        if let Some(value) = self.propagate {
+            actions.push(RecipeAction::Propagate(parse_propagate(&value)?));
+        }
+        Ok(actions)
+    }
+}
+
+/// One `[[item-rule]]` or `[[recipe-rule]]` table, raw: `filter` isn't resolved into a
+/// [`Selector`] yet, and `action` isn't turned into concrete actions yet.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawRule<A> {
+    /// The reason behind this rule.
+    reason: String,
+    /// What this rule applies to. Still raw; not yet resolved into a [`Selector`].
+    filter: toml::Value,
+    /// What it sets on every match.
+    action: A,
+}
+
+/// A `rules.toml` document's `[[item-rule]]` and `[[recipe-rule]]` entries.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawDocument {
+    /// Every `[[item-rule]]` entry, in file order.
+    #[serde(rename = "item-rule", default)]
+    item_rule: Vec<RawRule<RawItemAction>>,
+    /// Every `[[recipe-rule]]` entry, in file order.
+    #[serde(rename = "recipe-rule", default)]
+    recipe_rule: Vec<RawRule<RawRecipeAction>>,
+}
+
+/// One `[[item-rule]]` or `[[recipe-rule]]` entry, consisting of a selector, every
+/// action it sets on each match, and why it does so.
 ///
 /// TODO: Should we use a sum type instead of being generic on `<A>`?
 #[derive(Debug)]
@@ -99,8 +176,9 @@ struct Rule<A> {
     reason: String,
     /// What this rule applies to.
     selector: Selector,
-    /// What it sets on every match.
-    action: A,
+    /// What it sets on every match, in file order. Empty is valid, though it does
+    /// nothing, and [`RuleSet::parse`] reports this case as a warning.
+    actions: Vec<A>,
 }
 
 // TODO: The performance of for_each_matching_item and for_each_matching_recipe aren't
@@ -110,8 +188,8 @@ struct Rule<A> {
 // there were ways of setting these things without iterating over the set of all items /
 // recipes. But that kinda sounds like I want to reinvent SQL. Do I _want_ to use SQL
 // here? Are there some rust data types / crates that don't come with all the overhead of
-// SQL but do much of the same thing?
-// Perhaps one of the two variants lends itself better to parallelization / SIMD?
+// SQL but do much of the same thing?Perhaps one of the two variants lends itself better
+// to parallelization / SIMD?
 
 /// Calls `visit` with every item in `graph` that `selector` matches.
 fn for_each_matching_item(graph: &Graph, selector: &Selector, mut visit: impl FnMut(ItemIndex)) {
@@ -138,8 +216,8 @@ fn for_each_matching_recipe(
     }
 }
 
-/// A `rules.toml` document's `[[item-rule]]` and `[[recipe-rule]]` entries, parsed and
-/// validated.
+/// A `rules.toml` document's `[[item-rule]]` and `[[recipe-rule]]` entries, already
+/// parsed and validated.
 ///
 /// See the [module docs](self) for example rule files.
 #[derive(Debug, Default)]
@@ -148,34 +226,109 @@ pub struct RuleSet {
     item_rules: Vec<Rule<ItemAction>>,
     /// Every `[[recipe-rule]]` entry, in file order.
     recipe_rules: Vec<Rule<RecipeAction>>,
+    /// Human-readable warnings about things that parsed fine but are probably mistakes,
+    /// e.g. an `action` table that sets nothing.
+    ///
+    /// TODO: Should there be more warnings? E.g. about filters that didn't match against
+    /// anything, item names that don't exist, chance values outside of [0,1], or do these
+    /// go elsewhere? Should this be some bespoke enum instead of a String?
+    warnings: Vec<String>,
 }
 
 impl RuleSet {
     /// Parses one rules file's `[[item-rule]]` and `[[recipe-rule]]` entries.
     ///
-    /// Either array may be omitted, meaning no rules of that kind.
+    /// Either array may be omitted, meaning no rules of that kind. An `action` table
+    /// may set any number of its rule kind's actions, including zero. An empty `action`
+    /// does nothing, but reports to [`Self::warnings`].
     ///
     /// # Errors
     ///
-    /// If the document isn't valid TOML, a rule is missing `reason`, `filter` or
-    /// `action`, `action` doesn't contain *exactly* one action recognized for that rule's
-    /// kind, or the selector uses a key invalid for that kind (see the [module
-    /// docs](self) for what's in scope).
+    /// If the document's shape is wrong, e.g. a missing `reason`/`filter`/`action`, an
+    /// unrecognized key, or a value of the wrong TOML type.
+    ///
+    /// The error comes from [`serde_path_to_error`] and names the exact path to the
+    /// problem, e.g. `item-rule[3].action: unknown field` followed by the offending
+    /// key's name. Also errors if a `propagate` value isn't `true`, `"inert"`, or
+    /// `"drop"`, or if a selector uses a key invalid for its rule kind.
     #[inline]
     pub fn parse(source: &str) -> Result<Self, RuleError> {
-        let document: toml::Value = toml::from_str(source)?;
-        let root_table = document.as_table().ok_or(RuleError::WrongShape {
-            key: "<root>",
-            expected: "a table",
-        })?;
+        let deserializer = toml::Deserializer::new(source);
+        let document: RawDocument = serde_path_to_error::deserialize(deserializer)?;
 
-        let item_rules = parse_rule_array(root_table, "item-rule", parse_item_rule)?;
-        let recipe_rules = parse_rule_array(root_table, "recipe-rule", parse_recipe_rule)?;
+        let mut warnings = Vec::new();
+
+        let item_rules = document
+            .item_rule
+            .into_iter()
+            .enumerate()
+            .map(|(position, raw)| {
+                let actions = raw.action.into_actions();
+                if actions.is_empty() {
+                    warnings.push(format!(
+                        "item-rule[{position}]'s action table is empty, this rule does nothing"
+                    ));
+                }
+                let selector = selector::parse(&raw.filter, Context::Item).map_err(|cause| {
+                    RuleError::InRule {
+                        array: "item-rule",
+                        position,
+                        source: Box::new(RuleError::Selector(cause)),
+                    }
+                })?;
+                Ok(Rule {
+                    reason: raw.reason,
+                    selector,
+                    actions,
+                })
+            })
+            .collect::<Result<Vec<_>, RuleError>>()?;
+
+        let recipe_rules = document
+            .recipe_rule
+            .into_iter()
+            .enumerate()
+            .map(|(position, raw)| {
+                let actions = raw
+                    .action
+                    .into_actions()
+                    .map_err(|cause| RuleError::InRule {
+                        array: "recipe-rule",
+                        position,
+                        source: Box::new(cause),
+                    })?;
+                if actions.is_empty() {
+                    warnings.push(format!(
+                        "recipe-rule[{position}]'s action table is empty, this rule does nothing"
+                    ));
+                }
+                let selector = selector::parse(&raw.filter, Context::Recipe).map_err(|cause| {
+                    RuleError::InRule {
+                        array: "recipe-rule",
+                        position,
+                        source: Box::new(RuleError::Selector(cause)),
+                    }
+                })?;
+                Ok(Rule {
+                    reason: raw.reason,
+                    selector,
+                    actions,
+                })
+            })
+            .collect::<Result<Vec<_>, RuleError>>()?;
 
         Ok(Self {
             item_rules,
             recipe_rules,
+            warnings,
         })
+    }
+
+    /// Human-readable warnings about things that parsed fine but are probably mistakes.
+    #[inline]
+    #[must_use]
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
     }
 
     /// Applies every rule in order.
@@ -205,7 +358,9 @@ impl RuleSet {
                 index,
             };
             for_each_matching_item(graph, &rule.selector, |item| {
-                rule.action.apply_to(attrs, item, &cause);
+                for action in &rule.actions {
+                    action.apply_to(attrs, item, &cause);
+                }
             });
         }
         for (position, rule) in self.recipe_rules.iter().enumerate() {
@@ -216,154 +371,11 @@ impl RuleSet {
                 index,
             };
             for_each_matching_recipe(graph, &rule.selector, |recipe| {
-                rule.action.apply_to(graph, edges, recipe, &cause);
+                for action in &rule.actions {
+                    action.apply_to(graph, edges, recipe, &cause);
+                }
             });
         }
-    }
-}
-
-/// Parses one top-level array of rule tables (`[[item-rule]]` or `[[recipe-rule]]`),
-/// defaulting to empty if `key` is absent.
-fn parse_rule_array<A>(
-    root_table: &toml::Table,
-    key: &'static str,
-    parse_one: impl Fn(&toml::Value) -> Result<Rule<A>, RuleError>,
-) -> Result<Vec<Rule<A>>, RuleError> {
-    let Some(rules_value) = root_table.get(key) else {
-        return Ok(Vec::new());
-    };
-    let entries = rules_value.as_array().ok_or(RuleError::WrongShape {
-        key,
-        expected: "an array of tables",
-    })?;
-
-    entries
-        .iter()
-        .enumerate()
-        .map(|(position, entry)| {
-            parse_one(entry).map_err(|cause| RuleError::InRule {
-                array: key,
-                position,
-                source: Box::new(cause),
-            })
-        })
-        .collect()
-}
-
-/// Parses one `[[item-rule]]` table.
-fn parse_item_rule(entry: &toml::Value) -> Result<Rule<ItemAction>, RuleError> {
-    let (reason, action_table, filter_value) = parse_rule_fields(entry)?;
-    let action = parse_item_action(action_table)?;
-    let selector = selector::parse(filter_value, Context::Item)?;
-    Ok(Rule {
-        reason,
-        selector,
-        action,
-    })
-}
-
-/// Parses one `[[recipe-rule]]` table.
-fn parse_recipe_rule(entry: &toml::Value) -> Result<Rule<RecipeAction>, RuleError> {
-    let (reason, action_table, filter_value) = parse_rule_fields(entry)?;
-    let action = parse_recipe_action(action_table)?;
-    let selector = selector::parse(filter_value, Context::Recipe)?;
-    Ok(Rule {
-        reason,
-        selector,
-        action,
-    })
-}
-
-/// Parses the fields common to both rule kinds: `reason`, `action` (still a raw table)
-/// and `filter` (still a raw value).
-fn parse_rule_fields(
-    entry: &toml::Value,
-) -> Result<(String, &toml::Table, &toml::Value), RuleError> {
-    let table = entry.as_table().ok_or(RuleError::WrongShape {
-        key: "rule",
-        expected: "a table",
-    })?;
-
-    let reason = table
-        .get("reason")
-        .and_then(toml::Value::as_str)
-        .ok_or(RuleError::MissingField { field: "reason" })?
-        .to_owned();
-
-    let action_table = table
-        .get("action")
-        .and_then(toml::Value::as_table)
-        .ok_or(RuleError::MissingField { field: "action" })?;
-
-    let filter_value = table
-        .get("filter")
-        .ok_or(RuleError::MissingField { field: "filter" })?;
-
-    Ok((reason, action_table, filter_value))
-}
-
-/// Parses an `[[item-rule]]`'s `action` table into exactly one [`ItemAction`].
-fn parse_item_action(action_table: &toml::Table) -> Result<ItemAction, RuleError> {
-    // TODO: It would be nice to isolate this kind of parsing to be more modular, so that
-    // we don't repeat the string "world_source" everywhere in this function.
-    const KNOWN: [&str; 2] = ["required", "world_source"];
-
-    if let Some(unknown) = action_table
-        .keys()
-        .find(|key| !KNOWN.contains(&key.as_str()))
-    {
-        return Err(RuleError::UnknownAction(unknown.clone()));
-    }
-
-    let mut actions = Vec::new();
-    if let Some(value) = action_table.get("required") {
-        actions.push(ItemAction::Required(value.as_bool().ok_or(
-            RuleError::WrongShape {
-                key: "required",
-                expected: "a bool",
-            },
-        )?));
-    }
-    if let Some(value) = action_table.get("world_source") {
-        actions.push(ItemAction::WorldSource(value.as_bool().ok_or(
-            RuleError::WrongShape {
-                key: "world_source",
-                expected: "a bool",
-            },
-        )?));
-    }
-
-    // TODO: I'm really not sure anymore if an empty action or multiple actions should
-    // even be frowned upon. I mean empty actions should at least raise a warning i guess,
-    // but they shouldn't just lead to errors. And as remarked on previously,
-    // multiple actions in one rule may just be fine.
-    match actions.len() {
-        1 => Ok(actions.remove(0)),
-        0 => Err(RuleError::EmptyAction),
-        _ => Err(RuleError::MultipleActions),
-    }
-}
-
-/// Parses a `[[recipe-rule]]`'s `action` table into exactly one [`RecipeAction`].
-fn parse_recipe_action(action_table: &toml::Table) -> Result<RecipeAction, RuleError> {
-    const KNOWN: [&str; 1] = ["propagate"];
-
-    if let Some(unknown) = action_table
-        .keys()
-        .find(|key| !KNOWN.contains(&key.as_str()))
-    {
-        return Err(RuleError::UnknownAction(unknown.clone()));
-    }
-
-    let mut actions = Vec::new();
-    if let Some(value) = action_table.get("propagate") {
-        actions.push(RecipeAction::Propagate(parse_propagate(value)?));
-    }
-
-    match actions.len() {
-        1 => Ok(actions.remove(0)),
-        0 => Err(RuleError::EmptyAction),
-        _ => Err(RuleError::MultipleActions),
     }
 }
 
@@ -389,9 +401,16 @@ fn parse_propagate(value: &toml::Value) -> Result<EdgeState, RuleError> {
 /// A problem parsing or validating a rules file.
 #[derive(Debug, thiserror::Error)]
 pub enum RuleError {
-    /// The document isn't valid TOML at all.
-    #[error("invalid TOML: {0}")]
-    Toml(#[from] TomlError),
+    /// The document's shape was wrong.
+    ///
+    /// Could have been a missing field, an unrecognized key, or a value of the wrong TOML
+    /// type.
+    ///
+    /// Comes from [`serde_path_to_error`], so its `Display` already names the exact
+    /// path to the offending value, e.g. `item-rule[3].action: missing field` followed
+    /// by the missing field's name.
+    #[error(transparent)]
+    Deserialize(#[from] serde_path_to_error::Error<TomlError>),
     /// A value had the wrong TOML shape for its key.
     #[error("`{key}` should be {expected}")]
     WrongShape {
@@ -400,33 +419,12 @@ pub enum RuleError {
         /// What shape was expected instead.
         expected: &'static str,
     },
-    /// A rule, or the document itself, is missing a required field.
-    #[error("missing `{field}`")]
-    MissingField {
-        /// The field that's missing.
-        field: &'static str,
-    },
-    /// An `action` table had a key that isn't a recognized action.
-    #[error("unknown action `{0}` in `action`")]
-    UnknownAction(String),
-    /// An `action` table had none of the recognized actions.
-    #[error("`action` has no recognized action")]
-    EmptyAction,
-    /// An `action` table had more than one recognized action.
-    ///
-    /// For now, rules set exactly one, as I haven't yet seen a reasonable pair of rules
-    /// that would often go together. If this ever happens, we can either talk about
-    /// allowing multiple actions, or about creating a new action that does both things
-    /// simultaneously. Until then, it's easier to just do it this way.
-    ///
-    /// TODO: Although... Perhaps it would be more natural for an end user. Why would we
-    /// give them a table if they can't add multiple entries to that table?
-    #[error("`action` has more than one action")]
-    MultipleActions,
     /// The selector itself was invalid.
     #[error(transparent)]
     Selector(#[from] SelectorError),
-    /// An error inside one `[[item-rule]]` or `[[recipe-rule]]` entry.
+    /// An error inside one `[[item-rule]]` or `[[recipe-rule]]` entry, found while
+    /// validating its selector or its `propagate` value (after the document itself
+    /// already deserialized successfully).
     #[error("{array}[{position}]: {source}")]
     InRule {
         /// Which array this rule came from: `"item-rule"` or `"recipe-rule"`.
@@ -521,6 +519,56 @@ mod tests {
     }
 
     #[test]
+    fn two_item_actions_in_one_table_both_apply() {
+        let (graph, _required) = parse("mix: minecraft:iron_ore -> minecraft:iron_ingot");
+        let rules = RuleSet::parse(
+            r#"
+            [[item-rule]]
+            reason = "ores are both required and world-sourced"
+            filter = { id = "/_ore$/" }
+            action = { required = true, world_source = true }
+            "#,
+        )
+        .expect("an action table may set more than one action at once");
+        let mut attrs = NodeAttrs::defaults(&graph);
+        let mut edges = EdgeStates::defaults(&graph);
+
+        rules.apply(&graph, &mut attrs, &mut edges, 0);
+
+        // Sorted item order: minecraft:iron_ingot=0, minecraft:iron_ore=1.
+        assert!(attrs.is_required(ItemIndex::new(1)));
+        assert!(attrs.is_world_source(ItemIndex::new(1)));
+    }
+
+    #[test]
+    fn an_empty_action_table_does_nothing_but_warns() {
+        let (graph, _required) = parse("mix: stone_dust -> concrete");
+        let rules = RuleSet::parse(
+            r#"
+            [[item-rule]]
+            reason = "oops, forgot to fill this in"
+            filter = { id = "concrete" }
+            action = {}
+            "#,
+        )
+        .expect("an empty action table is valid, just useless");
+        let mut attrs = NodeAttrs::defaults(&graph);
+        let mut edges = EdgeStates::defaults(&graph);
+
+        rules.apply(&graph, &mut attrs, &mut edges, 0);
+
+        assert!(!attrs.is_required(ItemIndex::new(0)), "nothing was set");
+        assert_eq!(rules.warnings().len(), 1);
+        assert!(
+            rules
+                .warnings()
+                .first()
+                .expect("exactly one warning")
+                .contains("item-rule[0]")
+        );
+    }
+
+    #[test]
     fn propagate_action_sets_every_output_edge() {
         let (graph, _required) = parse("macerate: ore -> 2 dust + 1 dust");
         let rules = RuleSet::parse(
@@ -578,11 +626,11 @@ mod tests {
         );
 
         let error = result.expect_err("rule 0 is missing `reason`");
-        assert!(matches!(
-            error,
-            RuleError::InRule { array: "item-rule", position: 0, source }
-                if matches!(*source, RuleError::MissingField { field: "reason" })
-        ));
+        let message = error.to_string();
+        assert!(
+            message.contains("item-rule[0]") && message.contains("reason"),
+            "expected the entry's path and the missing field's name, got: {message}"
+        );
     }
 
     #[test]
@@ -597,30 +645,11 @@ mod tests {
         );
 
         let error = result.expect_err("propagate isn't a recognized item-rule action");
-        assert!(matches!(
-            error,
-            RuleError::InRule { array: "item-rule", position: 0, source }
-                if matches!(&*source, RuleError::UnknownAction(key) if key == "propagate")
-        ));
-    }
-
-    #[test]
-    fn two_item_actions_in_one_table_is_an_error() {
-        let result = RuleSet::parse(
-            r#"
-            [[item-rule]]
-            reason = "nonsense"
-            filter = { id = "x" }
-            action = { required = true, world_source = true }
-            "#,
+        let message = error.to_string();
+        assert!(
+            message.contains("item-rule[0]") && message.contains("propagate"),
+            "expected the entry's path and the offending key, got: {message}"
         );
-
-        let error = result.expect_err("required and world_source together is more than one action");
-        assert!(matches!(
-            error,
-            RuleError::InRule { array: "item-rule", position: 0, source }
-                if matches!(*source, RuleError::MultipleActions)
-        ));
     }
 
     #[test]
