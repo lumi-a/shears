@@ -65,11 +65,6 @@ pub enum Cause {
         /// The rule's position within that array.
         index: u32,
     },
-    /// A decision from `decisions.toml`, by its position in the file.
-    Decision {
-        /// The decision's position in `decisions.toml`.
-        index: u32,
-    },
 }
 
 /// Which of a rules file's two rule arrays a [`Cause::Rule`] came from.
@@ -154,6 +149,19 @@ impl EdgeStates {
             .get(recipe.index())
             .and_then(|outputs| outputs.get(usize::from(output)))
             .expect("output index in bounds for this recipe")
+    }
+
+    /// All of `recipe`'s output edge causes, in the same order as [`Self::states`].
+    ///
+    /// # Panics
+    ///
+    /// If `recipe` is out of bounds for this graph.
+    #[inline]
+    #[must_use]
+    pub fn causes(&self, recipe: RecipeIndex) -> &[Cause] {
+        self.cause
+            .get(recipe.index())
+            .expect("recipe index in bounds for this graph")
     }
 
     /// Sets both the state and its cause for one edge.
@@ -302,7 +310,7 @@ impl NodeAttrs {
 
 #[cfg(test)]
 mod tests {
-    use super::{Cause, EdgeState, EdgeStates, NodeAttrs};
+    use super::{Cause, EdgeState, EdgeStates, NodeAttrs, RuleKind};
     use crate::graph_dsl::parse;
     use crate::model::{ItemIndex, RecipeIndex};
 
@@ -338,13 +346,21 @@ mod tests {
             RecipeIndex::new(0),
             0,
             EdgeState::Dropped,
-            Cause::Decision { index: 3 },
+            Cause::Rule {
+                file: 0,
+                kind: RuleKind::Recipe,
+                index: 3,
+            },
         );
 
         assert_eq!(edges.state(RecipeIndex::new(0), 0), EdgeState::Dropped);
         assert!(matches!(
             edges.cause(RecipeIndex::new(0), 0),
-            Cause::Decision { index: 3 }
+            Cause::Rule {
+                file: 0,
+                kind: RuleKind::Recipe,
+                index: 3,
+            }
         ));
     }
 
