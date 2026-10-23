@@ -1,5 +1,4 @@
-Find optimal clusterings and optimal hierarchical clusterings.
-
+Eliminate unneeded recipes in KubeJS Minecraft Modpacks.
 
 ## todos
 - Add more manifest information
@@ -18,6 +17,7 @@ Find optimal clusterings and optimal hierarchical clusterings.
   Either just at debug time, but perhaps even preferrably at runtime.
   Users might care about this.
 - Proper licensing of the text fixture data.
+- Check out `cargo tree -d` to find duplicate
 
 ## License
 
