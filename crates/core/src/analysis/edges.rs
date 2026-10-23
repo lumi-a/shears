@@ -16,7 +16,7 @@ use crate::model::{Graph, ItemIndex, RecipeIndex};
 ///
 /// TODO: What's the current functional difference between `Inert` and `Dropped`? If one
 /// of them is redundant, we could change this (and that'd also make the parsing for the
-/// propagate action easier, as it would just be a boolean)
+/// propagate action easier, as it would just be a boolean).
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum EdgeState {
     /// Normal: a transitively required output on this edge makes the recipe's inputs

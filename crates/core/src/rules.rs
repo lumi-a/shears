@@ -230,8 +230,8 @@ pub struct RuleSet {
     /// e.g. an `action` table that sets nothing.
     ///
     /// TODO: Should there be more warnings? E.g. about filters that didn't match against
-    /// anything, item names that don't exist, chance values outside of [0,1], or do these
-    /// go elsewhere? Should this be some bespoke enum instead of a String?
+    /// anything, item names that don't exist, chance values outside of \[0,1\], or do
+    /// these go elsewhere? Should this be some bespoke enum instead of a String?
     warnings: Vec<String>,
 }
 
@@ -559,13 +559,11 @@ mod tests {
 
         assert!(!attrs.is_required(ItemIndex::new(0)), "nothing was set");
         assert_eq!(rules.warnings().len(), 1);
-        assert!(
-            rules
-                .warnings()
-                .first()
-                .expect("exactly one warning")
-                .contains("item-rule[0]")
-        );
+        assert!(rules
+            .warnings()
+            .first()
+            .expect("exactly one warning")
+            .contains("item-rule[0]"));
     }
 
     #[test]
