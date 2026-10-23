@@ -10,8 +10,8 @@
 //!
 //! Applying to only recipes: `has_input`, `has_output`.
 //!
-//! `has_input`'s nested selector can also use `is_catalyst` alongside the item keys
-//! above.
+//! `has_input` and `has_output`'s nested selector can also use `is_catalyst` alongside
+//! the item keys above.
 //!
 //! ```toml
 //! # AND: both must match.
@@ -23,7 +23,7 @@
 //! # NOT: negates the nested selector.
 //! filter = { not = { mod = "minecraft" } }
 //!
-//! # has_input and has_output take a nested selector, has_input's can also
+//! # has_input and has_output take a nested selector, either of which can also
 //! # use is_catalyst.
 //! filter = { has_output = { tag = "forge:dusts/rare_earth" } }
 //! filter = {
@@ -34,7 +34,7 @@
 
 use fancy_regex::Regex;
 
-use crate::model::{Graph, ItemIndex, ItemKind, RecipeIndex, Slot};
+use crate::model::{Graph, ItemIndex, ItemKind, RecipeIndex};
 
 /// Which kind of thing a [`Selector`] is being matched against.
 ///
@@ -45,9 +45,9 @@ pub enum Context {
     Item,
     /// A recipe.
     Recipe,
-    /// An item sitting in one of a recipe's input slots. Like [`Self::Item`], but also
-    /// allows `is_catalyst`.
-    InputMember,
+    /// An item sitting in one of a recipe's input or output slots. Like [`Self::Item`],
+    /// but also allows `is_catalyst`.
+    Slot,
 }
 
 impl Context {
@@ -56,33 +56,21 @@ impl Context {
         match self {
             Self::Item => "an item",
             Self::Recipe => "a recipe",
-            Self::InputMember => "an item inside a recipe's input slot",
+            Self::Slot => "an item sitting in a recipe's slot",
         }
     }
 }
 
 /// Which selector keys [`parse_clause`] accepts in which [`Context`]s.
 const KEY_CONTEXTS: &[(&str, &[Context])] = &[
-    (
-        "not",
-        &[Context::Item, Context::Recipe, Context::InputMember],
-    ),
-    (
-        "id",
-        &[Context::Item, Context::Recipe, Context::InputMember],
-    ),
-    (
-        "mod",
-        &[Context::Item, Context::Recipe, Context::InputMember],
-    ),
-    (
-        "type",
-        &[Context::Item, Context::Recipe, Context::InputMember],
-    ),
-    ("tag", &[Context::Item, Context::InputMember]),
+    ("not", &[Context::Item, Context::Recipe, Context::Slot]),
+    ("id", &[Context::Item, Context::Recipe, Context::Slot]),
+    ("mod", &[Context::Item, Context::Recipe, Context::Slot]),
+    ("type", &[Context::Item, Context::Recipe, Context::Slot]),
+    ("tag", &[Context::Item, Context::Slot]),
     ("has_input", &[Context::Recipe]),
     ("has_output", &[Context::Recipe]),
-    ("is_catalyst", &[Context::InputMember]),
+    ("is_catalyst", &[Context::Slot]),
 ];
 
 /// An exact id, or a `/regex/`-wrapped pattern.
@@ -205,13 +193,14 @@ pub enum Selector {
     Type(Pattern),
     /// Matches one of an item's tags.
     Tag(String),
-    /// Matches if any input slot has a member matching the nested
-    /// [`Context::InputMember`] selector, which can also use `is_catalyst`. Recipe-only.
+    /// Matches if any input slot has a member matching the nested [`Context::Slot`]
+    /// selector, which can also use `is_catalyst`. Recipe-only.
     Input(Box<Self>),
-    /// Matches if any output matches the nested selector. Recipe-only.
+    /// Matches if the output matches the nested [`Context::Slot`] selector, which can
+    /// also use `is_catalyst`. Recipe-only.
     Output(Box<Self>),
-    /// Matches an input slot's chance: catalysts are chance-0, i.e. not consumed.
-    /// Only valid inside `has_input`'s nested selector.
+    /// Matches a slot's chance: catalyst inputs are chance-0, i.e. not consumed. Only
+    /// valid inside `has_input`/`has_output`'s nested selector.
     IsCatalyst(bool),
 }
 
@@ -281,10 +270,8 @@ fn parse_clause(
             .and_then(Pattern::parse)
             .map(Selector::Type),
         "tag" => string_value(value, "tag").map(|tag| Selector::Tag(tag.to_owned())),
-        "has_input" => {
-            parse(value, Context::InputMember).map(|inner| Selector::Input(Box::new(inner)))
-        }
-        "has_output" => parse(value, Context::Item).map(|inner| Selector::Output(Box::new(inner))),
+        "has_input" => parse(value, Context::Slot).map(|inner| Selector::Input(Box::new(inner))),
+        "has_output" => parse(value, Context::Slot).map(|inner| Selector::Output(Box::new(inner))),
         "is_catalyst" => bool_value(value, "is_catalyst").map(Selector::IsCatalyst),
         _ => unreachable!("key was just looked up in KEY_CONTEXTS"),
         // TODO: Is there no way to rustily exhaustively check a vector of strings?
@@ -361,7 +348,7 @@ pub fn matches_item(selector: &Selector, graph: &Graph, item: ItemIndex) -> bool
             tag_index(graph, tag).is_some_and(|index| subject.tags().contains(&index))
         }
         Selector::Input(_) | Selector::Output(_) | Selector::IsCatalyst(_) => {
-            unreachable!("parse() only builds these for Context::Recipe or Context::InputMember")
+            unreachable!("parse() only builds these for Context::Recipe or Context::Slot")
         }
     }
 }
@@ -401,52 +388,47 @@ pub fn matches_recipe(selector: &Selector, graph: &Graph, recipe: RecipeIndex) -
             pattern.matches(name)
         }
         Selector::Tag(_) => {
-            unreachable!("parse() only builds Tag for Context::Item or Context::InputMember")
+            unreachable!("parse() only builds Tag for Context::Item or Context::Slot")
         }
         Selector::Input(inner) => subject.inputs().iter().any(|slot| {
             slot.members()
                 .iter()
-                .any(|&member| matches_input_member(inner, graph, slot, member))
+                .any(|&member| matches_slot_member(inner, graph, slot.chance(), member))
         }),
         Selector::Output(inner) => subject
             .outputs()
             .iter()
-            .any(|output| matches_item(inner, graph, output.item())),
+            .any(|output| matches_slot_member(inner, graph, output.chance(), output.item())),
         Selector::IsCatalyst(_) => {
-            unreachable!("parse() only builds IsCatalyst for Context::InputMember")
+            unreachable!("parse() only builds IsCatalyst for Context::Slot")
         }
     }
 }
 
-/// Whether `member`, sitting in `slot`, matches `selector`. Used for `has_input`'s
-/// nested [`Context::InputMember`] selector.
+/// Whether `member`, sitting in a slot of chance `chance`, matches `selector`. Used for
+/// `has_input`/`has_output`'s nested [`Context::Slot`] selector.
 ///
 /// # Panics
 ///
 /// If `member` is out of bounds for `graph`. [`parse`] never constructs the
-/// recipe-only keys (`has_input`/`has_output`) for [`Context::InputMember`], so those
-/// arms are unreachable by construction.
+/// recipe-only keys (`has_input`/`has_output`) for [`Context::Slot`], so those arms are
+/// unreachable by construction.
 #[inline]
 #[must_use]
 #[expect(
     clippy::unreachable,
     reason = "parse() enforces selector/context agreement before this ever runs"
 )]
-fn matches_input_member(
-    selector: &Selector,
-    graph: &Graph,
-    slot: &Slot,
-    member: ItemIndex,
-) -> bool {
+fn matches_slot_member(selector: &Selector, graph: &Graph, chance: f32, member: ItemIndex) -> bool {
     match selector {
         Selector::All(clauses) => clauses
             .iter()
-            .all(|clause| matches_input_member(clause, graph, slot, member)),
+            .all(|clause| matches_slot_member(clause, graph, chance, member)),
         Selector::Any(clauses) => clauses
             .iter()
-            .any(|clause| matches_input_member(clause, graph, slot, member)),
-        Selector::Not(inner) => !matches_input_member(inner, graph, slot, member),
-        Selector::IsCatalyst(expected) => is_catalyst(slot.chance()) == *expected,
+            .any(|clause| matches_slot_member(clause, graph, chance, member)),
+        Selector::Not(inner) => !matches_slot_member(inner, graph, chance, member),
+        Selector::IsCatalyst(expected) => is_catalyst(chance) == *expected,
         Selector::Id(_) | Selector::Mod(_) | Selector::Type(_) | Selector::Tag(_) => {
             matches_item(selector, graph, member)
         }
@@ -637,7 +619,7 @@ mod tests {
     }
 
     #[test]
-    fn has_input_matches_recipes_with_a_matching_input_member() {
+    fn has_input_matches_recipes_with_a_matching_slot_member() {
         let (graph, _required) = parse_graph("mix: stone_dust + water -> concrete");
         let select = selector(
             r#"filter = { has_input = { id = "stone_dust" } }"#,
@@ -723,13 +705,27 @@ mod tests {
     }
 
     #[test]
-    fn is_catalyst_outside_has_input_is_an_error() {
+    fn is_catalyst_matches_has_output_s_chance_too() {
+        let graph = catalyst_fixture_graph();
+        let select = selector(
+            r#"filter = { has_output = { id = "gtceu:wire", is_catalyst = false } }"#,
+            Context::Recipe,
+        );
+
+        assert!(
+            matches_recipe(&select, &graph, RecipeIndex::new(0)),
+            "is_catalyst reads the output's own chance, not just an input slot's"
+        );
+    }
+
+    #[test]
+    fn is_catalyst_outside_has_input_or_has_output_is_an_error() {
         let value: toml::Value =
             toml::from_str("filter = { is_catalyst = true }").expect("valid test TOML");
         let wrapped = value.get("filter").expect("has filter").clone();
 
         let error = parse(&wrapped, Context::Item)
-            .expect_err("is_catalyst only applies inside has_input's nested selector");
+            .expect_err("is_catalyst only applies inside has_input/has_output's nested selector");
 
         assert!(matches!(
             error,
