@@ -85,6 +85,21 @@ impl TransitivelyRequired {
     pub fn why(&self, item: ItemIndex) -> Option<&Why> {
         self.why.get(item.index()).and_then(Option::as_ref)
     }
+
+    /// How many items are transitively required.
+    #[inline]
+    #[must_use]
+    pub fn transitively_required_item_count(&self) -> usize {
+        self.item_bits.count_ones(..)
+    }
+
+    /// How many recipes propagate, i.e. have at least one transitively required output
+    /// over a propagating edge.
+    #[inline]
+    #[must_use]
+    pub fn transitively_required_recipe_count(&self) -> usize {
+        self.recipe_bits.count_ones(..)
+    }
 }
 
 /// Computes what's transitively required.
