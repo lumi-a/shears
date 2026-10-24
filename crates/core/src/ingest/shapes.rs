@@ -2,8 +2,14 @@
 //!
 //! This means the user can declare their own recipe shapes instead of relying on whatever
 //! hardcoded ones ship with the program.
+//!
+//! TODO: Not sure if shapes.toml is the right place for this, but it would be nice if pack
+//! authors could also specify recipes to be edited. E.g. in Monifactory's omnic synthesis, the
+//! mechanics for how you gain omnium is not at all well-described by the recipe files. The mod
+//! authors may then want to remove those recipes, and instead supply one of their own (in the
+//! case of omnium: "take all possible elements and turn them into X omnium nuggets").
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
 use serde::Deserialize;
@@ -12,7 +18,7 @@ use toml::de::Error as TomlError;
 
 use super::ingredient::Leaf;
 use super::path::Path;
-use super::{resolve_leaves, resolve_output_id, slot_tag, RecipeDraft, Resolver};
+use super::{RecipeDraft, Resolver, resolve_leaves, resolve_output_id, slot_tag};
 use crate::model::{Output, Slot};
 
 /// This crate's built-in shapes, as TOML text embedded at compile time.
@@ -418,8 +424,9 @@ fn resolve_slot_spec(
 /// Tries each of `members` against `node` in order, returning the first that resolves.
 ///
 /// For [`MemberCase::Item`], an [`IdSuffix`] that doesn't resolve on `node` just
-/// means this particular entry doesn't have one. In this case, we use the base id unsuffixed, and
-/// this is not treated as an error. In fact, most recipes in modern Gregtech do not have NBT.
+/// means this particular entry doesn't have one. In this case, we use the base id unsuffixed,
+/// and this is not treated as an error. In fact, most recipes in modern Gregtech do not have
+/// NBT.
 fn extract_leaf(node: &Value, members: &[MemberCase]) -> Option<Leaf> {
     for member in members {
         match member {
@@ -455,10 +462,67 @@ fn fold_id_suffix(base_id: String, id_suffix: Option<&IdSuffix>, node: &Value) -
             Some(suffix) => format!("{base_id}{suffix}"),
             None => base_id,
         },
-        Some(IdSuffix::Configuration(path)) => match path.resolve(node).and_then(Value::as_u64) {
-            Some(configuration) => format!("{base_id}{{configuration:{configuration}}}"),
-            None => base_id,
-        },
+        Some(IdSuffix::Configuration(path)) => {
+            match path.resolve(node).and_then(Value::as_u64) {
+                Some(configuration) => format!("{base_id}{{configuration:{configuration}}}"),
+                None => base_id,
+            }
+        }
+    }
+}
+
+/// Walks `value` recursively, adding every synthetic item id it finds to `out`.
+///
+/// Synthetic ids only exist because some recipe shape aded them as an [`IdSuffix`], so they
+/// don't actually appear in `registries/item.json`.
+///
+/// TODO: We should ensure, somehow, that these synthetic IDs don't conflict with existing ids.
+///
+/// A plain structural walk, not driven by any one shape's slot paths. These can
+/// appear anywhere a recipe nests an ingredient, and walking generically is simpler and
+/// more robust than keeping a second copy of every shape that happens to use circuits or
+/// NBT in sync with this.
+/// TODO: Is that true? Is that really more robust?
+///
+/// # Panics
+///
+/// Never, unless this crate has a bug. The Id Suffix formats here must exactly match
+/// [`fold_id_suffix`]'s, which should be checked by this module's own tests.
+pub(super) fn collect_synthetic_item_keys(value: &Value, out: &mut BTreeSet<String>) {
+    match value {
+        Value::Object(map) => {
+            if let Some(id) = synthetic_id_of(map) {
+                let _: bool = out.insert(id);
+            }
+            for nested in map.values() {
+                collect_synthetic_item_keys(nested, out);
+            }
+        }
+        Value::Array(entries) => {
+            for nested in entries {
+                collect_synthetic_item_keys(nested, out);
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+    }
+}
+
+/// The synthetic id that `map` would resolve to, if it's a `gtceu:circuit` configuration slot
+/// or an NBT-tagged ingredient. `None` for everything else, including a plain item or tag.
+fn synthetic_id_of(map: &serde_json::Map<String, Value>) -> Option<String> {
+    match map.get("type").and_then(Value::as_str) {
+        Some("gtceu:circuit") => {
+            let configuration = map.get("configuration").and_then(Value::as_u64)?;
+            Some(format!(
+                "gtceu:programmed_circuit{{configuration:{configuration}}}"
+            ))
+        }
+        Some("forge:nbt" | "forge:partial_nbt") => {
+            let item = map.get("item").and_then(Value::as_str)?;
+            let nbt = map.get("nbt").and_then(Value::as_str)?;
+            Some(format!("{item}{nbt}"))
+        }
+        _ => None,
     }
 }
 
@@ -639,7 +703,9 @@ mod tests {
         let _: &Shapes = Shapes::builtin();
     }
 
-    fn item_only_resolver(keys: &[&str]) -> (BTreeMap<String, ItemIndex>, BTreeMap<String, u32>) {
+    fn item_only_resolver(
+        keys: &[&str],
+    ) -> (BTreeMap<String, ItemIndex>, BTreeMap<String, u32>) {
         let item_index = keys
             .iter()
             .enumerate()
@@ -712,8 +778,8 @@ mod tests {
     /// `gtceu:distillery`'s real fluid-in and fluid-out shape, plus a chance-0 circuit
     /// configuration slot.
     ///
-    /// This tests that catalysts fall out of `chance == 0` automatically and that `gtceu:circuit`
-    /// resolves to a real item `gtceu:programmed_circuit`.
+    /// This tests that catalysts fall out of `chance == 0` automatically and that
+    /// `gtceu:circuit` resolves to a real item `gtceu:programmed_circuit`.
     #[test]
     fn gtceu_machine_shape_reads_circuits_and_fluids() {
         let shapes = Shapes::builtin();

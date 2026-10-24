@@ -110,7 +110,8 @@ type RecipeAdapter = fn(String, &Value, &Resolver<'_>) -> Result<RecipeDraft, St
 pub fn ingest(files: &[RawFile]) -> (Graph, ParseReport) {
     let mut report = ParseReport::default();
 
-    let (item_keys, fluid_keys, raw_tags) = read_registries_and_tags(files, &mut report);
+    let (mut item_keys, fluid_keys, raw_tags) = read_registries_and_tags(files, &mut report);
+    item_keys.extend(discover_synthetic_item_keys(files));
     let (sorted_keys, item_index) = build_item_index(&item_keys, &fluid_keys);
     let (tags, tag_members_by_id) = resolve_all_tags(&raw_tags, &item_index, &mut report);
     let tag_index: BTreeMap<String, u32> = tags
@@ -171,8 +172,24 @@ pub fn ingest(files: &[RawFile]) -> (Graph, ParseReport) {
     (Graph::new(1, items, recipes, tags, rtypes), report)
 }
 
-/// Reads `registries/item.json`, `registries/fluid.json`, and every item tag file
-/// (`tags/minecraft/item/**`), returning raw members that aren't tag-resolved yet.
+/// Reads `registries/item.json`, `registries/fluid.json`, and every item and fluid tag
+/// file (`tags/minecraft/item/**`, `tags/minecraft/fluid/**`), returning raw members
+/// that aren't tag-resolved yet.
+///
+/// Item and fluid tags share one namespace here, same as `Slot`/`Item` don't otherwise
+/// distinguish "an item tag" from "a fluid tag".
+///
+/// TODO: Should we distinguish the two, for sake of performance?
+///
+/// TODO: Do we check that a fluid and an item never have the same id? I mean surely that'd
+/// never happen in minecraft, but to be safe?
+///
+/// TODO: Also not the right position for this todo, but into the tag bitvec that `item`
+/// carries, into that we only add the tags that are actually used in recipes, right? Otherwise
+/// we'd be wasting bits.
+///
+/// TODO: On the other hand, it would be nice to somehow still maintain all the tags, that'd be
+/// very useful for stuff like seeding propagation and suggesting hints to the user.
 fn read_registries_and_tags(
     files: &[RawFile],
     report: &mut ParseReport,
@@ -196,7 +213,7 @@ fn read_registries_and_tags(
                 Err(message) => report.fail(&file.path, message),
             },
             path => {
-                if let Some(tag_id) = item_tag_id(path) {
+                if let Some(tag_id) = tag_id_from_path(path) {
                     match parse_tag_members(&file.bytes) {
                         Ok(members) => {
                             let _: Option<Vec<String>> = raw_tags.insert(tag_id, members);
@@ -241,12 +258,15 @@ fn parse_tag_members(bytes: &[u8]) -> Result<Vec<String>, String> {
     }
 }
 
-/// Maps a raw file path under `tags/minecraft/item/` to the tag id it defines.
+/// Maps a raw file path under `tags/minecraft/item/` or `tags/minecraft/fluid/` to the
+/// tag id it defines.
 ///
-/// For instance, maps `tags/minecraft/item/forge/dusts.json` to `forge:dusts`.
-fn item_tag_id(path: &str) -> Option<String> {
+/// For instance, maps `tags/minecraft/item/forge/dusts.json` to `forge:dusts`, and
+/// `tags/minecraft/fluid/forge/oxygen.json` to `forge:oxygen`.
+fn tag_id_from_path(path: &str) -> Option<String> {
     let rest = path
-        .strip_prefix("tags/minecraft/item/")?
+        .strip_prefix("tags/minecraft/item/")
+        .or_else(|| path.strip_prefix("tags/minecraft/fluid/"))?
         .strip_suffix(".json")?;
     let (namespace, name) = rest.split_once('/')?;
     Some(format!("{namespace}:{name}"))
@@ -260,6 +280,28 @@ fn recipe_id_from_path(path: &str) -> Option<String> {
     let rest = path.strip_prefix("recipes/")?.strip_suffix(".json")?;
     let (namespace, name) = rest.split_once('/')?;
     Some(format!("{namespace}:{name}"))
+}
+
+/// Finds every item id that would only exist because a recipe synthetically added it, e.g. the
+/// programmable circuit item or an NBT-suffixed tool.
+///
+/// TODO: This re-parses every recipe file's JSON, which is probably very bad, as IO and/or
+/// JSON parsing is already expected to be the bottleneck of the crate, no?
+///
+/// Re-parses every recipe file's JSON, same as [`parse_recipes`] does later; a recipe
+/// that fails to parse here just contributes nothing, since it'll report its own
+/// diagnostic in that later, real pass.
+fn discover_synthetic_item_keys(files: &[RawFile]) -> BTreeSet<String> {
+    let mut keys = BTreeSet::new();
+    for file in files {
+        if !file.path.starts_with("recipes/") {
+            continue;
+        }
+        if let Ok(value) = serde_json::from_slice::<Value>(&file.bytes) {
+            shapes::collect_synthetic_item_keys(&value, &mut keys);
+        }
+    }
+    keys
 }
 
 /// Builds the sorted item/fluid list and its key-to-id lookup.
@@ -319,9 +361,24 @@ fn build_items(
 ///
 /// Memoizes into `resolved`. Also guards against a reference cycle and reports it in
 /// `report`.
+///
+/// A trailing `?` on an entry is Minecraft's own 'optional member' marker.
+/// Some mods write `"modid:item?"` or `"#modid:tag?"` for a member that may not exist
+/// (e.g. when that mod isn't loaded.
+/// This is silently skipped in-game, so we skip it silently too rather than report it.
+///
+/// TODO: For all these strange suffixes like that, should we not at least also evaluate tags
+/// in the future against minecraft's identifier spec, to notice when there are strange ids
+/// going on? The spec in Java Edition is, taken from <https://minecraft.wiki/w/Identifier>:
+///
+/// - The namespace and the path may only contain `[.0-9a-z_-]`.
+/// - The path (but not the namespace) may additionally contain a forward slash `/`.
+/// - .. is not a valid namespace.
+/// - `snake_case` is preferred.
 fn resolve_tag(
     id: &str,
     raw: &BTreeMap<String, Vec<String>>,
+    item_index: &BTreeMap<String, ItemIndex>,
     resolved: &mut BTreeMap<String, BTreeSet<String>>,
     visiting: &mut BTreeSet<String>,
     report: &mut ParseReport,
@@ -338,10 +395,20 @@ fn resolve_tag(
     match raw.get(id) {
         Some(raw_members) => {
             for entry in raw_members {
-                if let Some(nested) = entry.strip_prefix('#') {
-                    members.extend(resolve_tag(nested, raw, resolved, visiting, report));
+                let (core, optional) = entry
+                    .strip_suffix('?')
+                    .map_or((entry.as_str(), false), |stripped| (stripped, true));
+
+                if let Some(nested) = core.strip_prefix('#') {
+                    if !optional || raw.contains_key(nested) {
+                        members.extend(resolve_tag(
+                            nested, raw, item_index, resolved, visiting, report,
+                        ));
+                    }
+                } else if !optional || item_index.contains_key(core) {
+                    let _: bool = members.insert(core.to_owned());
                 } else {
-                    let _: bool = members.insert(entry.clone());
+                    // Absent, but marked optional, so silently skip.
                 }
             }
         }
@@ -370,7 +437,14 @@ fn resolve_all_tags(
 
     for tag_id in raw_tags.keys() {
         let mut visiting = BTreeSet::new();
-        let string_members = resolve_tag(tag_id, raw_tags, &mut resolved, &mut visiting, report);
+        let string_members = resolve_tag(
+            tag_id,
+            raw_tags,
+            item_index,
+            &mut resolved,
+            &mut visiting,
+            report,
+        );
         let ids: BTreeSet<ItemIndex> = string_members
             .iter()
             .filter_map(|key| {
@@ -426,7 +500,11 @@ fn slot_tag(leaves: &[Leaf], resolver: &Resolver<'_>) -> Option<u32> {
 }
 
 /// Resolves one already-parsed ingredient into a fully-consumed input [`Slot`].
-fn consumed_slot(leaves: &[Leaf], count: u32, resolver: &Resolver<'_>) -> Result<Slot, String> {
+fn consumed_slot(
+    leaves: &[Leaf],
+    count: u32,
+    resolver: &Resolver<'_>,
+) -> Result<Slot, String> {
     let members = resolve_leaves(leaves, resolver)?;
     let tag = slot_tag(leaves, resolver);
     Ok(Slot::new(members, tag, count, 1.0))
@@ -549,7 +627,10 @@ fn parse_recipes(
 
 #[cfg(test)]
 mod tests {
-    use super::validate_chance;
+    use std::collections::BTreeMap;
+
+    use super::{ParseReport, resolve_all_tags, tag_id_from_path, validate_chance};
+    use crate::model::ItemIndex;
 
     #[test]
     fn values_inside_the_range_pass_through_unchanged() {
@@ -568,5 +649,69 @@ mod tests {
     fn genuinely_out_of_range_is_an_error() {
         drop(validate_chance(-0.1).expect_err("-0.5 is far outside [0, 1]"));
         drop(validate_chance(1.1).expect_err("1.5 is far outside [0, 1]"));
+    }
+
+    #[test]
+    fn tag_id_from_path_accepts_both_item_and_fluid_tags() {
+        assert_eq!(
+            tag_id_from_path("tags/minecraft/item/forge/dusts.json"),
+            Some("forge:dusts".to_owned())
+        );
+        assert_eq!(
+            tag_id_from_path("tags/minecraft/fluid/forge/oxygen.json"),
+            Some("forge:oxygen".to_owned())
+        );
+        assert_eq!(tag_id_from_path("recipes/minecraft/stick.json"), None);
+    }
+
+    #[test]
+    fn an_absent_optional_plain_member_is_skipped_without_a_diagnostic() {
+        let raw_tags =
+            BTreeMap::from([("forge:milk".to_owned(), vec!["minecraft:milk?".to_owned()])]);
+        let item_index: BTreeMap<String, ItemIndex> = BTreeMap::new();
+        let mut report = ParseReport::default();
+
+        let (tags, tag_members) = resolve_all_tags(&raw_tags, &item_index, &mut report);
+
+        assert_eq!(tags, vec!["forge:milk".to_owned()]);
+        assert!(tag_members.first().expect("one tag").is_empty());
+        assert!(
+            report.diagnostics.is_empty(),
+            "an absent optional member shouldn't be reported: {:?}",
+            report.diagnostics
+        );
+    }
+
+    #[test]
+    fn an_absent_required_plain_member_is_still_reported() {
+        let raw_tags = BTreeMap::from([(
+            "forge:dusts".to_owned(),
+            vec!["minecraft:made_up_dust".to_owned()],
+        )]);
+        let item_index: BTreeMap<String, ItemIndex> = BTreeMap::new();
+        let mut report = ParseReport::default();
+
+        let (_tags, _tag_members) = resolve_all_tags(&raw_tags, &item_index, &mut report);
+
+        assert_eq!(report.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn an_absent_optional_nested_tag_is_skipped_without_a_diagnostic() {
+        let raw_tags = BTreeMap::from([(
+            "forge:fuel".to_owned(),
+            vec!["#forge:biodiesel?".to_owned()],
+        )]);
+        let item_index: BTreeMap<String, ItemIndex> = BTreeMap::new();
+        let mut report = ParseReport::default();
+
+        let (_tags, tag_members) = resolve_all_tags(&raw_tags, &item_index, &mut report);
+
+        assert!(tag_members.first().expect("one tag").is_empty());
+        assert!(
+            report.diagnostics.is_empty(),
+            "an absent optional nested tag shouldn't be reported: {:?}",
+            report.diagnostics
+        );
     }
 }
