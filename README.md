@@ -16,7 +16,6 @@ Eliminate unneeded recipes in KubeJS Minecraft Modpacks.
   silently default to no match, you should instead emit some information.
   Either just at debug time, but perhaps even preferrably at runtime.
   Users might care about this.
-- Proper licensing of the text fixture data.
 - Check out `cargo tree -d` to find duplicate
 
 ## License
@@ -27,6 +26,10 @@ Licensed under either of
 - MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
 
 at your option.
+
+This applies to shears' own source code. Some fixtures under `fixtures/`
+are recipe/modpack data treated under separate terms instead. See
+[fixtures/README.md](fixtures/README.md) for what and why.
 
 
 ## Contribution

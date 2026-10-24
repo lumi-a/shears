@@ -12,3 +12,14 @@ Exported with `/kubejs export` ingame. Had to put `ServerEvents.recipes(event =>
 - Minecraft 1.20.1, Forge 47.4.10
 - KubeJS 2001.6.5-build.26, Rhino 2001.2.3-build.10
 - Architectury 9.2.14
+
+## Licensing
+
+Fixtures aren't covered by shears' own MIT/Apache-2.0 dual license (see the
+repository root's `LICENSE-MIT`/`LICENSE-APACHE`).
+
+- **vanilla-1.20.1.tar.zst**: Minecraft recipe/datapack JSON, covered by
+  Mojang's Minecraft Usage Guidelines.
+- **monifactory-0.13.8-normalmode.tar.zst**: recipe data from an export of
+  [Monifactory](https://github.com/Omicron-Industries/Monifactory).
+  This is an in-game export via `/kubejs export`.
