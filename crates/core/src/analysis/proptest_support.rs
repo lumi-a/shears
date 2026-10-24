@@ -47,7 +47,8 @@ pub(super) fn arb_graph_attrs_edges() -> impl Strategy<Value = (Graph, NodeAttrs
             )
         })
         .prop_flat_map(|(item_count, raw_recipes, required_flags)| {
-            let total_outputs: usize = raw_recipes.iter().map(|recipe| recipe.outputs.len()).sum();
+            let total_outputs: usize =
+                raw_recipes.iter().map(|recipe| recipe.outputs.len()).sum();
             (
                 Just(item_count),
                 Just(raw_recipes),

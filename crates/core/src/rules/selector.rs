@@ -271,7 +271,9 @@ fn parse_clause(
             .map(Selector::Type),
         "tag" => string_value(value, "tag").map(|tag| Selector::Tag(tag.to_owned())),
         "has_input" => parse(value, Context::Slot).map(|inner| Selector::Input(Box::new(inner))),
-        "has_output" => parse(value, Context::Slot).map(|inner| Selector::Output(Box::new(inner))),
+        "has_output" => {
+            parse(value, Context::Slot).map(|inner| Selector::Output(Box::new(inner)))
+        }
         "is_catalyst" => bool_value(value, "is_catalyst").map(Selector::IsCatalyst),
         _ => unreachable!("key was just looked up in KEY_CONTEXTS"),
         // TODO: Is there no way to rustily exhaustively check a vector of strings?
@@ -419,7 +421,12 @@ pub fn matches_recipe(selector: &Selector, graph: &Graph, recipe: RecipeIndex) -
     clippy::unreachable,
     reason = "parse() enforces selector/context agreement before this ever runs"
 )]
-fn matches_slot_member(selector: &Selector, graph: &Graph, chance: f32, member: ItemIndex) -> bool {
+fn matches_slot_member(
+    selector: &Selector,
+    graph: &Graph,
+    chance: f32,
+    member: ItemIndex,
+) -> bool {
     match selector {
         Selector::All(clauses) => clauses
             .iter()
@@ -505,7 +512,8 @@ mod tests {
 
     #[test]
     fn object_is_and_array_is_or() {
-        let (graph, _required) = parse_graph("mix: minecraft:dirt + minecraft:sand -> gtceu:dust");
+        let (graph, _required) =
+            parse_graph("mix: minecraft:dirt + minecraft:sand -> gtceu:dust");
         let and_select = selector(
             r#"filter = { mod = "minecraft", id = "/dirt/" }"#,
             Context::Item,
@@ -773,8 +781,8 @@ mod tests {
             toml::from_str(r#"filter = { nonsense = "x" }"#).expect("valid test TOML");
         let wrapped = value.get("filter").expect("has filter").clone();
 
-        let error =
-            parse(&wrapped, Context::Item).expect_err("nonsense is not a recognized selector key");
+        let error = parse(&wrapped, Context::Item)
+            .expect_err("nonsense is not a recognized selector key");
 
         assert!(matches!(error, SelectorError::UnknownKey(key) if key == "nonsense"));
     }

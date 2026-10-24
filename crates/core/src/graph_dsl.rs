@@ -168,7 +168,8 @@ pub(crate) fn parse(source: &str) -> (Graph, BTreeSet<ItemIndex>) {
                     .map(|term| Output::new(resolve(&term.name), term.count, 1.0))
                     .collect();
                 let id = recipe.name.clone();
-                named_recipes.push((id, Recipe::new(recipe.name, 0, inputs, outputs, None, None)));
+                named_recipes
+                    .push((id, Recipe::new(recipe.name, 0, inputs, outputs, None, None)));
             }
         }
     }

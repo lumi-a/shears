@@ -390,7 +390,10 @@ fn resolve_all_tags(
 }
 
 /// Resolves a flat list of alternatives to the set of [`Item`]s.
-fn resolve_leaves(leaves: &[Leaf], resolver: &Resolver<'_>) -> Result<BTreeSet<ItemIndex>, String> {
+fn resolve_leaves(
+    leaves: &[Leaf],
+    resolver: &Resolver<'_>,
+) -> Result<BTreeSet<ItemIndex>, String> {
     let mut out = BTreeSet::new();
     for leaf in leaves {
         match leaf {

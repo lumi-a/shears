@@ -98,10 +98,11 @@ impl RecipeAction {
     ) {
         match *self {
             Self::Propagate(state) => {
-                for (output_position, output) in graph.recipe(recipe).outputs().iter().enumerate() {
-                    if output_filter
-                        .is_some_and(|filter| !selector::matches_item(filter, graph, output.item()))
-                    {
+                for (output_position, output) in graph.recipe(recipe).outputs().iter().enumerate()
+                {
+                    if output_filter.is_some_and(|filter| {
+                        !selector::matches_item(filter, graph, output.item())
+                    }) {
                         continue;
                     }
                     let output_index = u8::try_from(output_position)
@@ -352,13 +353,14 @@ impl RuleSet {
                         "recipe-rule[{position}]'s action table is empty, this rule does nothing"
                     ));
                 }
-                let selector = selector::parse(&raw.filter, Context::Recipe).map_err(|cause| {
-                    RuleError::InRule {
-                        array: "recipe-rule",
-                        position,
-                        source: Box::new(RuleError::Selector(cause)),
-                    }
-                })?;
+                let selector =
+                    selector::parse(&raw.filter, Context::Recipe).map_err(|cause| {
+                        RuleError::InRule {
+                            array: "recipe-rule",
+                            position,
+                            source: Box::new(RuleError::Selector(cause)),
+                        }
+                    })?;
                 let output_filter = raw
                     .apply_to_output
                     .map(|value| selector::parse(&value, Context::Item))

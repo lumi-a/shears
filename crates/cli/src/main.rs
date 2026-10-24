@@ -123,7 +123,8 @@ fn analyze(graph_path: &Path, rules_paths: &[PathBuf]) -> Result<Summary, Analyz
     let mut warnings = Vec::new();
 
     for (position, rules_path) in rules_paths.iter().enumerate() {
-        let file = u16::try_from(position).map_err(|_overflow| AnalyzeError::TooManyRulesFiles)?;
+        let file =
+            u16::try_from(position).map_err(|_overflow| AnalyzeError::TooManyRulesFiles)?;
         let rules = read_rules(rules_path)?;
         rules.apply(&graph, &mut attrs, &mut edges, file);
         warnings.extend(

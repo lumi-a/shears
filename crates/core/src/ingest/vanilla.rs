@@ -35,6 +35,22 @@ fn parse_result_object(value: &Value, resolver: &Resolver<'_>) -> Result<Output,
     Ok(Output::new(item, count, 1.0))
 }
 
+/// Parses and resolves a `result` that's either a bare item id (count 1, vanilla's own
+/// convention for cooking) or an object `{item, count}` (some cooking recipes from other
+/// mods use this instead, with the same meaning).
+fn parse_result(value: &Value, resolver: &Resolver<'_>) -> Result<Output, String> {
+    match value {
+        Value::String(id) => {
+            let item = resolve_output_id(id, resolver)?;
+            Ok(Output::new(item, 1, 1.0))
+        }
+        Value::Object(_) => parse_result_object(value, resolver),
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::Array(_) => {
+            Err("`result` is neither a bare item id nor an object".to_owned())
+        }
+    }
+}
+
 /// `minecraft:crafting_shaped` has a `key` of symbols to ingredient and a `pattern` of
 /// symbols. The symbol count is how often it appears across the pattern.
 pub(super) fn crafting_shaped(
@@ -175,9 +191,8 @@ pub(super) fn cooking(
 
     let result = value
         .get("result")
-        .and_then(Value::as_str)
-        .ok_or_else(|| "`result` is not a bare item id".to_owned())?;
-    let output_item = resolve_output_id(result, resolver)?;
+        .ok_or_else(|| "missing `result`".to_owned())?;
+    let output = parse_result(result, resolver)?;
 
     let ticks = match value.get("cookingtime") {
         None => None,
@@ -192,7 +207,7 @@ pub(super) fn cooking(
     Ok(RecipeDraft {
         id,
         inputs: vec![input],
-        outputs: vec![Output::new(output_item, 1, 1.0)],
+        outputs: vec![output],
         eu_t: None,
         ticks,
     })
@@ -445,6 +460,43 @@ mod tests {
             *item_index.get("minecraft:baked_potato").expect("test item")
         );
         assert_eq!(draft.ticks, Some(200));
+    }
+
+    #[test]
+    fn cooking_also_reads_an_object_result_with_a_count() {
+        // GTCEu smelting recipes commonly use the object form instead of
+        // vanilla's bare strings.
+        let (item_index, tag_index) = item_only_resolver(&[
+            "projectred_core:red_silicon_comp",
+            "projectred_core:infused_silicon",
+        ]);
+        let tag_members = BTreeMap::new();
+        let resolver = Resolver {
+            item_index: &item_index,
+            tag_index: &tag_index,
+            tag_members: &tag_members,
+        };
+
+        let draft = cooking(
+            "projectred_core:infused_silicon".to_owned(),
+            &json!({
+                "type": "minecraft:smelting",
+                "cookingtime": 200,
+                "ingredient": {"item": "projectred_core:red_silicon_comp"},
+                "result": {"item": "projectred_core:infused_silicon", "count": 2},
+            }),
+            &resolver,
+        )
+        .expect("a well-formed cooking recipe with an object result");
+
+        let output = draft.outputs.first().expect("one output");
+        assert_eq!(
+            output.item(),
+            *item_index
+                .get("projectred_core:infused_silicon")
+                .expect("test item")
+        );
+        assert_eq!(output.count(), 2);
     }
 
     #[test]

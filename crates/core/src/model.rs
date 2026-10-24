@@ -3,11 +3,11 @@
 //! These are plain data: construction, adjacency and analysis live elsewhere.
 //!
 //! Terminology:
-//! - An **id**, as in `Item::id` or `Recipe::id`, is the namespaced string Minecraft
-//!   itself calls an id (or "Identifier"), e.g. `"minecraft:iron_ingot"`.
-//! - An **index**, as in `ItemIndex` or `RecipeIndex`, is this crate's own `u32` position
-//!   into `Graph::items` or `Graph::recipes`. It has no Minecraft meaning and is only
-//!   ever valid for the one `Graph` it came from.
+//! - An **id**, as in `Item::id` or `Recipe::id`, is the namespaced string Minecraft itself calls
+//!   an id (or "Identifier"), e.g. `"minecraft:iron_ingot"`.
+//! - An **index**, as in `ItemIndex` or `RecipeIndex`, is this crate's own `u32` position into
+//!   `Graph::items` or `Graph::recipes`. It has no Minecraft meaning and is only ever valid for
+//!   the one `Graph` it came from.
 
 use std::collections::BTreeSet;
 
@@ -457,8 +457,8 @@ mod tests {
         let first = serde_json::to_string(&graph).expect("serializing a new Graph");
         let deserialized: Graph = serde_json::from_str(&first)
             .expect("deserializing shears' own graph.json serde_json output");
-        let second =
-            serde_json::to_string(&deserialized).expect("serializing the deserialized Graph again");
+        let second = serde_json::to_string(&deserialized)
+            .expect("serializing the deserialized Graph again");
 
         assert_eq!(first, second, "graph.json should round-trip identically");
     }

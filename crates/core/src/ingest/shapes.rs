@@ -12,7 +12,7 @@ use toml::de::Error as TomlError;
 
 use super::ingredient::Leaf;
 use super::path::Path;
-use super::{RecipeDraft, Resolver, resolve_leaves, resolve_output_id, slot_tag};
+use super::{resolve_leaves, resolve_output_id, slot_tag, RecipeDraft, Resolver};
 use crate::model::{Output, Slot};
 
 /// This crate's built-in shapes, as TOML text embedded at compile time.
