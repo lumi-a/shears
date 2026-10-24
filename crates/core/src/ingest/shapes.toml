@@ -1,0 +1,67 @@
+# Recipe shapes this crate ships with by default.
+
+[recipe_to_shape]
+# Exact recipe type -> shape name, Takes priority over `namespaces`.
+types = {}
+
+# Recipe type namespace -> shape name, used when `types` has no exact entry.
+namespaces = { gtceu = "gtceu-machine", enderio = "enderio-flat", nuclearcraft = "nuclearcraft-flat" }
+
+[shape.gtceu-machine]
+
+duration = "duration"
+eu_per_tick = "tickInputs.eu[0].content"
+
+[[shape.gtceu-machine.input]]
+path = "inputs.item"
+count = "content.count"
+chance = { numerator = "chance", denominator = "maxChance", default_denominator = 10000 }
+member = [
+    { item = "content.ingredient.item", id_suffix = { raw = "content.ingredient.nbt" } },
+    { tag = "content.ingredient.tag" },
+    { literal_item = "gtceu:programmed_circuit", id_suffix = { configuration = "content.configuration" } },
+]
+
+[[shape.gtceu-machine.input]]
+path = "inputs.fluid"
+count = "content.amount"
+chance = { numerator = "chance", denominator = "maxChance", default_denominator = 10000 }
+member = [{ item = "content.value[0].fluid" }, { tag = "content.value[0].tag" }]
+
+[[shape.gtceu-machine.output]]
+path = "outputs.item"
+count = "content.count"
+chance = { numerator = "chance", denominator = "maxChance", default_denominator = 10000 }
+member = [
+    { item = "content.ingredient.item", id_suffix = { raw = "content.ingredient.nbt" } },
+]
+
+[[shape.gtceu-machine.output]]
+path = "outputs.fluid"
+count = "content.amount"
+chance = { numerator = "chance", denominator = "maxChance", default_denominator = 10000 }
+member = [{ item = "content.value[0].fluid" }]
+
+
+[shape.enderio-flat]
+
+[[shape.enderio-flat.input]]
+path = "inputs"
+count = "count"
+member = [{ item = "ingredient.item" }, { tag = "ingredient.tag" }]
+
+[[shape.enderio-flat.output]]
+path = "result"
+member = [{ item = "item" }]
+
+
+[shape.nuclearcraft-flat]
+
+[[shape.nuclearcraft-flat.input]]
+path = "input"
+member = [{ item = "item" }, { tag = "tag" }]
+
+[[shape.nuclearcraft-flat.output]]
+path = "output"
+count = "count"
+member = [{ item = "item" }, { tag = "tag" }]

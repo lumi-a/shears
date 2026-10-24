@@ -311,7 +311,7 @@ impl Recipe {
 ///
 /// Items and recipes are sorted by key to keep serialized output    deterministic.
 ///
-/// Returned by ingest, and used by analysis.
+/// Returned by ingest and used by analysis.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Graph {
     /// Schema version of this file, for sake of forward compatibility.

@@ -42,7 +42,7 @@ pub enum Why {
 }
 
 /// The result of [`transitively_required`]: which items and recipes are transitively
-/// required, and why.
+/// required and why.
 #[derive(Debug)]
 pub struct TransitivelyRequired {
     /// `item_bits.contains(item.index())`: whether `item` is transitively required.

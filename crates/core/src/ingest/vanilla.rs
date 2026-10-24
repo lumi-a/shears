@@ -35,7 +35,7 @@ fn parse_result_object(value: &Value, resolver: &Resolver<'_>) -> Result<Output,
     Ok(Output::new(item, count, 1.0))
 }
 
-/// `minecraft:crafting_shaped` has a `key` of symbols to ingredient, and a `pattern` of
+/// `minecraft:crafting_shaped` has a `key` of symbols to ingredient and a `pattern` of
 /// symbols. The symbol count is how often it appears across the pattern.
 pub(super) fn crafting_shaped(
     id: String,

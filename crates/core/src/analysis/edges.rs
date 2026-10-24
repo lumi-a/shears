@@ -1,4 +1,4 @@
-//! Derived per-edge and per-node state, and the reasons behind it.
+//! Derived per-edge and per-node state and the reasons behind it.
 //!
 //! Propagation lives *only* on `recipe -> output` edges, not on inputs.
 
@@ -186,7 +186,7 @@ impl EdgeStates {
 
 /// Per-item annotations computed before edge states.
 ///
-/// Material and form per item, and per-recipe attributes like [`Show`].
+/// Material / form per item and per-recipe attributes like [`Show`].
 #[derive(Clone, Debug)]
 pub struct NodeAttrs {
     /// `required.contains(item.index())`: whether `item` is required directly (opt-in,
@@ -248,7 +248,7 @@ impl NodeAttrs {
         })
     }
 
-    /// Marks `item` as required directly, and why.
+    /// Marks `item` as required directly and why.
     ///
     /// # Panics
     ///
@@ -262,7 +262,11 @@ impl NodeAttrs {
             .expect("item index in bounds for this graph") = Some(cause);
     }
 
-    /// Unmarks `item` as required directly, and clears its cause.
+    /// Unmarks `item` as required directly and clears its cause.
+    ///
+    /// TODO: This should probably have a cause for being cleared, no? Does that make
+    /// sense? Perhaps we should have a vector of causes instead? Feature bloat for now,
+    /// just for future plans perhaps.
     ///
     /// # Panics
     ///

@@ -6,6 +6,8 @@
 //! parsed to real ids without incomplete drafts.
 
 mod ingredient;
+mod path;
+mod shapes;
 mod vanilla;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -502,7 +504,13 @@ fn parse_recipes(
         *report.recipe_type_counts.entry(rtype.clone()).or_insert(0) += 1;
 
         let maybe_adapter: Option<RecipeAdapter> = match rtype.as_str() {
-            "minecraft:crafting_shaped" => Some(vanilla::crafting_shaped),
+            "minecraft:crafting_shaped"
+            // GTCEu's own crafting-table-shaped types: structurally identical to
+            // vanilla's (pattern/key/result), just registered under a different type id.
+            | "gtceu:shaped"
+            | "gtceu:crafting_shaped_strict"
+            | "gtceu:crafting_shaped_energy_transfer"
+            | "gtceu:crafting_shaped_fluid_container" => Some(vanilla::crafting_shaped),
             "minecraft:crafting_shapeless" => Some(vanilla::crafting_shapeless),
             "minecraft:smelting"
             | "minecraft:blasting"
@@ -513,17 +521,23 @@ fn parse_recipes(
             _ => None,
         };
 
-        let Some(adapter) = maybe_adapter else {
-            report.fail(
+        if let Some(adapter) = maybe_adapter {
+            match adapter(id, &value, resolver) {
+                Ok(draft) => drafts.push((rtype, draft)),
+                Err(message) => report.fail(&file.path, message),
+            }
+            continue;
+        }
+
+        match shapes::Shapes::builtin().shape_for(&rtype) {
+            Some(shape) => match shapes::apply(id, &value, shape, resolver) {
+                Ok(draft) => drafts.push((rtype, draft)),
+                Err(message) => report.fail(&file.path, message),
+            },
+            None => report.fail(
                 &file.path,
                 format!("no adapter for recipe type {rtype:?} yet"),
-            );
-            continue;
-        };
-
-        match adapter(id, &value, resolver) {
-            Ok(draft) => drafts.push((rtype, draft)),
-            Err(message) => report.fail(&file.path, message),
+            ),
         }
     }
 

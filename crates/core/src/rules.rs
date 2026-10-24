@@ -115,7 +115,7 @@ impl RecipeAction {
 
 /// An `[[item-rule]]`'s `action` table.
 ///
-/// Every recognized key is optional, and any number may be set at once.
+/// Every recognized key is optional and any number may be set at once.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawItemAction {
@@ -163,7 +163,7 @@ impl RawRecipeAction {
     }
 }
 
-/// One `[[item-rule]]` table. `filter` isn't resolved into a [`Selector`] yet, and
+/// One `[[item-rule]]` table. `filter` isn't resolved into a [`Selector`] yet and
 /// `action` isn't turned into concrete actions yet.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -212,7 +212,7 @@ struct ItemRule {
     /// What this rule applies to.
     selector: Selector,
     /// What it sets on every match, in file order. Empty is valid, though it does
-    /// nothing, and [`RuleSet::parse`] reports this case as a warning.
+    /// nothing and [`RuleSet::parse`] reports this case as a warning.
     actions: Vec<ItemAction>,
 }
 
@@ -227,7 +227,7 @@ struct RecipeRule {
     /// of every output. `None` means every output.
     output_filter: Option<Selector>,
     /// What it sets on every match, in file order. Empty is valid, though it does
-    /// nothing, and [`RuleSet::parse`] reports this case as a warning.
+    /// nothing and [`RuleSet::parse`] reports this case as a warning.
     actions: Vec<RecipeAction>,
 }
 
