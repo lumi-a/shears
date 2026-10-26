@@ -183,13 +183,6 @@ pub fn ingest(files: &[RawFile]) -> (Graph, ParseReport) {
 ///
 /// TODO: Do we check that a fluid and an item never have the same id? I mean surely that'd
 /// never happen in minecraft, but to be safe?
-///
-/// TODO: Also not the right position for this todo, but into the tag bitvec that `item`
-/// carries, into that we only add the tags that are actually used in recipes, right? Otherwise
-/// we'd be wasting bits.
-///
-/// TODO: On the other hand, it would be nice to somehow still maintain all the tags, that'd be
-/// very useful for stuff like seeding propagation and suggesting hints to the user.
 fn read_registries_and_tags(
     files: &[RawFile],
     report: &mut ParseReport,
@@ -625,7 +618,7 @@ fn parse_recipes(
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{ParseReport, resolve_all_tags, tag_id_from_path, validate_chance};
+    use super::{resolve_all_tags, tag_id_from_path, validate_chance, ParseReport};
     use crate::model::ItemIndex;
 
     #[test]

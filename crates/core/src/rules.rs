@@ -653,13 +653,11 @@ mod tests {
 
         assert!(!attrs.is_required(ItemIndex::new(0)), "nothing was set");
         assert_eq!(rules.warnings().len(), 1);
-        assert!(
-            rules
-                .warnings()
-                .first()
-                .expect("exactly one warning")
-                .contains("item-rule[0]")
-        );
+        assert!(rules
+            .warnings()
+            .first()
+            .expect("exactly one warning")
+            .contains("item-rule[0]"));
     }
 
     #[test]

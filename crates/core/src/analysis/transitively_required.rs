@@ -237,7 +237,7 @@ fn naive_transitively_required(
 mod tests {
     use proptest::prelude::*;
 
-    use super::{Why, naive_transitively_required, transitively_required};
+    use super::{naive_transitively_required, transitively_required, Why};
     use crate::analysis::edges::{Cause, EdgeState, EdgeStates, NodeAttrs};
     use crate::analysis::proptest_support::arb_graph_attrs_edges;
     use crate::graph_dsl::parse;

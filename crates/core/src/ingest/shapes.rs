@@ -18,7 +18,7 @@ use toml::de::Error as TomlError;
 
 use super::ingredient::Leaf;
 use super::path::Path;
-use super::{resolve_leaves, resolve_output_id, slot_tag, RecipeDraft, Resolver};
+use super::{RecipeDraft, Resolver, resolve_leaves, resolve_output_id, slot_tag};
 use crate::model::{Output, Slot};
 
 /// This crate's built-in shapes, as TOML text embedded at compile time.
@@ -475,8 +475,8 @@ fn fold_id_suffix(base_id: String, id_suffix: Option<&IdSuffix>, node: &Value) -
 ///
 /// Synthetic ids only exist because some recipe shape aded them as an [`IdSuffix`], so they
 /// don't actually appear in `registries/item.json`.
-///
-/// TODO: We should ensure, somehow, that these synthetic IDs don't conflict with existing ids.
+/// Synthetic ids can't collide with real registered ids, because synthetic ones contain
+/// `{...}`, and the curly braces aren't valid characters in an identifier.
 ///
 /// A plain structural walk, not driven by any one shape's slot paths. These can appear
 /// anywhere a recipe nests an ingredient, and walking generically is simpler and more robust

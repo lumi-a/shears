@@ -458,7 +458,7 @@ const fn is_catalyst(chance: f32) -> bool {
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::{Context, Selector, SelectorError, matches_item, matches_recipe, parse};
+    use super::{matches_item, matches_recipe, parse, Context, Selector, SelectorError};
     use crate::graph_dsl::parse as parse_graph;
     use crate::model::{Graph, Item, ItemIndex, ItemKind, Output, Recipe, RecipeIndex, Slot};
 
