@@ -1,11 +1,10 @@
 //! Turns [`Why`] and [`Cause`] into human-readable report text.
 //!
 //! No new analysis happens here, this just renders data that
-//! [`transitively_required`](super::transitively_required) and [`RuleSet`] already
-//! computed.
+//! [`transitively_required`](super::transitively_required) and [`RuleSet`] already computed.
 //!
-//! TODO: Should this perhaps be JSON or some other formatted output instead, so other
-//! tools can parse this more easily and reliably?
+//! TODO: Should this perhaps be JSON or some other formatted output instead, so other tools
+//! can parse this more easily and reliably?
 
 use super::edges::Cause;
 use super::transitively_required::{TransitivelyRequired, Why};
@@ -14,8 +13,8 @@ use crate::rules::RuleSet;
 
 /// Renders why a state was assigned, as one clause of report text.
 ///
-/// `rule_sets` must be indexed the same way [`RuleSet::apply`]'s `file` argument was
-/// when the rules ran.
+/// `rule_sets` must be indexed the same way [`RuleSet::apply`]'s `file` argument was when the
+/// rules ran.
 #[inline]
 #[must_use]
 pub fn cause_text(rule_sets: &[RuleSet], cause: &Cause) -> String {
@@ -34,13 +33,13 @@ pub fn cause_text(rule_sets: &[RuleSet], cause: &Cause) -> String {
 
 /// A human-readable witness path for why `item` is transitively required.
 ///
-/// Follows [`Why`]'s chain of BFS parents back to the required item that started it,
-/// e.g. `ore ->[mine] raw_iron ->[smelt] ingot ->[press] plate`.
+/// Follows [`Why`]'s chain of BFS parents back to the required item that started it, e.g. `ore
+/// ->[mine] raw_iron ->[smelt] ingot ->[press] plate`.
 ///
 /// `None` if `item` isn't transitively required at all.
 ///
-/// `rule_sets` must be indexed the same way [`RuleSet::apply`]'s `file` argument was
-/// when the rules ran.
+/// `rule_sets` must be indexed the same way [`RuleSet::apply`]'s `file` argument was when the
+/// rules ran.
 ///
 /// # Panics
 ///

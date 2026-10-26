@@ -108,13 +108,13 @@ fn main() -> ExitCode {
     }
 }
 
-/// Reads `graph_path` and every path in `rules_paths` (in order), applies them, and
-/// summarizes the result.
+/// Reads `graph_path` and every path in `rules_paths` (in order), applies them, and summarizes
+/// the result.
 ///
 /// # Errors
 ///
-/// If any file can't be read, the graph isn't valid JSON, a rules file isn't valid, or
-/// more than `u16::MAX` rules files were passed.
+/// If any file can't be read, the graph isn't valid JSON, a rules file isn't valid, or more
+/// than `u16::MAX` rules files were passed.
 fn analyze(graph_path: &Path, rules_paths: &[PathBuf]) -> Result<Summary, AnalyzeError> {
     let graph = read_graph(graph_path)?;
 

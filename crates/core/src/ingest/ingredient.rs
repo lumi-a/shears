@@ -15,8 +15,8 @@ pub(super) enum Leaf {
 
 /// Parses a single alternative bare item or tag.
 ///
-/// Didn't see an array nested inside so far, so for now we treat it as unrecognised
-/// instead of flattening it.
+/// Didn't see an array nested inside so far, so for now we treat it as unrecognised instead of
+/// flattening it.
 fn parse_leaf(value: &Value) -> Option<Leaf> {
     match value {
         Value::Object(map) => match (map.get("item"), map.get("tag")) {
@@ -24,9 +24,11 @@ fn parse_leaf(value: &Value) -> Option<Leaf> {
             (_, Some(Value::String(tag))) => Some(Leaf::Tag(tag.clone())),
             _ => None,
         },
-        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) | Value::Array(_) => {
-            None
-        }
+        Value::Null
+        | Value::Bool(_)
+        | Value::Number(_)
+        | Value::String(_)
+        | Value::Array(_) => None,
     }
 }
 
@@ -38,9 +40,11 @@ fn parse_leaf(value: &Value) -> Option<Leaf> {
 pub(super) fn parse_ingredient(value: &Value) -> Option<Vec<Leaf>> {
     match value {
         Value::Array(entries) => entries.iter().map(parse_leaf).collect(),
-        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) | Value::Object(_) => {
-            parse_leaf(value).map(|leaf| vec![leaf])
-        }
+        Value::Null
+        | Value::Bool(_)
+        | Value::Number(_)
+        | Value::String(_)
+        | Value::Object(_) => parse_leaf(value).map(|leaf| vec![leaf]),
     }
 }
 

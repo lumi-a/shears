@@ -32,8 +32,8 @@ impl Producers {
                 u32::try_from(recipe_position).expect("fewer than u32::MAX recipes"),
             );
             for (output_position, output) in recipe.outputs().iter().enumerate() {
-                let output_index =
-                    u8::try_from(output_position).expect("fewer than u8::MAX outputs per recipe");
+                let output_index = u8::try_from(output_position)
+                    .expect("fewer than u8::MAX outputs per recipe");
                 producers
                     .get_mut(output.item().index())
                     .expect("output item index in bounds for this graph's items")

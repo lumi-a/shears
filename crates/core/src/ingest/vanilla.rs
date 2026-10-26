@@ -16,8 +16,8 @@ fn as_u32(value: &Value) -> Option<u32> {
     u32::try_from(count).ok()
 }
 
-/// Parses and resolves the `{"item": ..., "count": ...}` result shape that's used by
-/// crafting and smithing.
+/// Parses and resolves the `{"item": ..., "count": ...}` result shape that's used by crafting
+/// and smithing.
 fn parse_result_object(value: &Value, resolver: &Resolver<'_>) -> Result<Output, String> {
     let object = value
         .as_object()
@@ -36,8 +36,8 @@ fn parse_result_object(value: &Value, resolver: &Resolver<'_>) -> Result<Output,
 }
 
 /// Parses and resolves a `result` that's either a bare item id (count 1, vanilla's own
-/// convention for cooking) or an object `{item, count}` (some cooking recipes from other
-/// mods use this instead, with the same meaning).
+/// convention for cooking) or an object `{item, count}` (some cooking recipes from other mods
+/// use this instead, with the same meaning).
 fn parse_result(value: &Value, resolver: &Resolver<'_>) -> Result<Output, String> {
     match value {
         Value::String(id) => {
@@ -213,8 +213,8 @@ pub(super) fn cooking(
     })
 }
 
-/// `minecraft:stonecutting` has a single `ingredient`, a `count`, and a `result` that's a
-/// bare item id.
+/// `minecraft:stonecutting` has a single `ingredient`, a `count`, and a `result` that's a bare
+/// item id.
 pub(super) fn stonecutting(
     id: String,
     value: &Value,
@@ -248,8 +248,8 @@ pub(super) fn stonecutting(
     })
 }
 
-/// `minecraft:smithing_transform` has a `template`, `base` and `addition` as ingredients,
-/// and an object `result`.
+/// `minecraft:smithing_transform` has a `template`, `base` and `addition` as ingredients, and
+/// an object `result`.
 pub(super) fn smithing_transform(
     id: String,
     value: &Value,
@@ -261,7 +261,8 @@ pub(super) fn smithing_transform(
         let leaves = parse_ingredient(ingredient_value)
             .ok_or_else(|| format!("unrecognized ingredient shape in {key:?}"))?;
         inputs.push(
-            consumed_slot(&leaves, 1, resolver).map_err(|error| format!("{key:?}: {error}"))?,
+            consumed_slot(&leaves, 1, resolver)
+                .map_err(|error| format!("{key:?}: {error}"))?,
         );
     }
 
@@ -285,12 +286,16 @@ mod tests {
 
     use serde_json::json;
 
-    use super::{cooking, crafting_shaped, crafting_shapeless, smithing_transform, stonecutting};
+    use super::{
+        cooking, crafting_shaped, crafting_shapeless, smithing_transform, stonecutting,
+    };
     use crate::ingest::Resolver;
     use crate::model::ItemIndex;
 
     /// A small item universe and no tags.
-    fn item_only_resolver(keys: &[&str]) -> (BTreeMap<String, ItemIndex>, BTreeMap<String, u32>) {
+    fn item_only_resolver(
+        keys: &[&str],
+    ) -> (BTreeMap<String, ItemIndex>, BTreeMap<String, u32>) {
         let item_index = keys
             .iter()
             .enumerate()

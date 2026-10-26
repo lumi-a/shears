@@ -18,7 +18,7 @@ use toml::de::Error as TomlError;
 
 use super::ingredient::Leaf;
 use super::path::Path;
-use super::{RecipeDraft, Resolver, resolve_leaves, resolve_output_id, slot_tag};
+use super::{resolve_leaves, resolve_output_id, slot_tag, RecipeDraft, Resolver};
 use crate::model::{Output, Slot};
 
 /// This crate's built-in shapes, as TOML text embedded at compile time.
@@ -38,25 +38,26 @@ enum BaseRef {
     Literal(String),
 }
 
-/// A value found alongside a [`MemberCase::Item`]'s base id that should mark it as a
-/// different item.
+/// A value found alongside a [`MemberCase::Item`]'s base id that should mark it as a different
+/// item.
 ///
 /// If present, this is appended to the Id.
 ///
-/// This is useful for, for example, NBT data or programmed circuits (i.e. certain
-/// configurable catalysts used in Gregtech recipes).
+/// This is useful for, for example, NBT data or programmed circuits (i.e. certain configurable
+/// catalysts used in Gregtech recipes).
 #[derive(Debug)]
 enum IdSuffix {
     /// Append the string at this path verbatim.
     /// Used for NBT. To that end, we just reuse the SNBT string of the kubejs export,
     /// which hopefully is normalised in some way.
     ///
-    /// TODO: Check whether this normalisation really holds up. I wouldn't trust code by default,
-    /// I would only really trust API contracts in the kubejs documentation (or its
-    /// dependencies if kubejs doesn't process it further). Even then, I'm not comfortable
-    /// relying on such API specs, because even if kubejs used semver, I have no guarantees
-    /// over what kubejs people use to export their recipes. Alternatively, re-normalise the
-    /// data using some NBT crate first (though parsing may fail then, sigh).
+    /// TODO: Check whether this normalisation really holds up. I wouldn't trust code by
+    /// default, I would only really trust API contracts in the kubejs documentation (or
+    /// its dependencies if kubejs doesn't process it further). Even then, I'm not
+    /// comfortable relying on such API specs, because even if kubejs used semver, I have
+    /// no guarantees over what kubejs people use to export their recipes. Alternatively,
+    /// re-normalise the data using some NBT crate first (though parsing may fail then,
+    /// sigh).
     Raw(Path),
     /// Format the integer at this path as `{configuration:N}` and append it.
     ///
@@ -84,13 +85,13 @@ enum MemberCase {
 
 /// How to read a slot's chance from its array entry.
 ///
-/// `numerator / denominator`, with `denominator` defaulting to `default_denominator`
-/// if its own path doesn't resolve.
+/// `numerator / denominator`, with `denominator` defaulting to `default_denominator` if its
+/// own path doesn't resolve.
 ///
-/// TODO: Perhaps we should isolate stuff like this into individual functions that the
-/// user can _somehow_ call. E.g. Extract a general "division" and a general "default if
-/// not present" function. A multiplication and a concatenation funtcion also seem useful.
-/// Sigh, this will be a lot of bloat, will it not be?
+/// TODO: Perhaps we should isolate stuff like this into individual functions that the user can
+/// _somehow_ call. E.g. Extract a general "division" and a general "default if not present"
+/// function. A multiplication and a concatenation funtcion also seem useful. Sigh, this will
+/// be a lot of bloat, will it not be?
 #[derive(Debug, Deserialize)]
 struct ChanceSpec {
     /// Path to the chance numerator.
@@ -309,8 +310,8 @@ impl Shapes {
     ///
     /// # Panics
     ///
-    /// Never, unless `shapes.toml` itself is broken, which would bea bug in this crate, so it's
-    /// hopefully fine to panic rather than thread a `Result` through every call site.
+    /// Never, unless `shapes.toml` itself is broken, which would bea bug in this crate, so
+    /// it's hopefully fine to panic rather than thread a `Result` through every call site.
     pub(super) fn builtin() -> &'static Self {
         static SHAPES: OnceLock<Shapes> = OnceLock::new();
         SHAPES.get_or_init(|| {
@@ -423,10 +424,9 @@ fn resolve_slot_spec(
 
 /// Tries each of `members` against `node` in order, returning the first that resolves.
 ///
-/// For [`MemberCase::Item`], an [`IdSuffix`] that doesn't resolve on `node` just
-/// means this particular entry doesn't have one. In this case, we use the base id unsuffixed,
-/// and this is not treated as an error. In fact, most recipes in modern Gregtech do not have
-/// NBT.
+/// For [`MemberCase::Item`], an [`IdSuffix`] that doesn't resolve on `node` just means this
+/// particular entry doesn't have one. In this case, we use the base id unsuffixed, and this is
+/// not treated as an error. In fact, most recipes in modern Gregtech do not have NBT.
 fn extract_leaf(node: &Value, members: &[MemberCase]) -> Option<Leaf> {
     for member in members {
         match member {
@@ -478,11 +478,10 @@ fn fold_id_suffix(base_id: String, id_suffix: Option<&IdSuffix>, node: &Value) -
 ///
 /// TODO: We should ensure, somehow, that these synthetic IDs don't conflict with existing ids.
 ///
-/// A plain structural walk, not driven by any one shape's slot paths. These can
-/// appear anywhere a recipe nests an ingredient, and walking generically is simpler and
-/// more robust than keeping a second copy of every shape that happens to use circuits or
-/// NBT in sync with this.
-/// TODO: Is that true? Is that really more robust?
+/// A plain structural walk, not driven by any one shape's slot paths. These can appear
+/// anywhere a recipe nests an ingredient, and walking generically is simpler and more robust
+/// than keeping a second copy of every shape that happens to use circuits or NBT in sync with
+/// this. TODO: Is that true? Is that really more robust?
 ///
 /// # Panics
 ///
@@ -526,13 +525,13 @@ fn synthetic_id_of(map: &serde_json::Map<String, Value>) -> Option<String> {
     }
 }
 
-/// Reads `path`'s value on `node` as a count, defaulting to 1 when `path` is absent or
-/// doesn't resolve.
+/// Reads `path`'s value on `node` as a count, defaulting to 1 when `path` is absent or doesn't
+/// resolve.
 ///
-/// TODO: Should this not maybe sometimes be a warning if it doesn't resolve?
-/// Perhaps it'd be better to let the user decide, with the same method mentioned in the other
-/// TODO, about extracting some kind of "this is optional, default to that" primitive, vs "i want
-/// this key and if it's absent that's an error" kind of deal?
+/// TODO: Should this not maybe sometimes be a warning if it doesn't resolve? Perhaps it'd be
+/// better to let the user decide, with the same method mentioned in the other TODO, about
+/// extracting some kind of "this is optional, default to that" primitive, vs "i want this key
+/// and if it's absent that's an error" kind of deal?
 fn resolve_count(maybe_path: Option<&Path>, node: &Value) -> Result<u32, String> {
     let Some(count_path) = maybe_path else {
         return Ok(1);
@@ -576,9 +575,9 @@ fn resolve_chance(maybe_spec: Option<&ChanceSpec>, node: &Value) -> Result<f32, 
 
 /// Reads the entries a [`SlotSpec`]'s path resolved to.
 ///
-/// Reads an array as its elements, and reads a single object as a one-element list (some shapes
-/// have exactly one not-wrapped result instead of a one-element array, e.g. `EnderIO`'s bare
-/// `result` object).
+/// Reads an array as its elements, and reads a single object as a one-element list (some
+/// shapes have exactly one not-wrapped result instead of a one-element array, e.g. `EnderIO`'s
+/// bare `result` object).
 fn as_entries(node: &Value) -> Result<Vec<&Value>, String> {
     match node {
         Value::Array(entries) => Ok(entries.iter().collect()),
@@ -591,8 +590,8 @@ fn as_entries(node: &Value) -> Result<Vec<&Value>, String> {
 
 /// Extracts every slot this [`SlotSpec`] describes as input [`Slot`]s.
 ///
-/// An empty result (not an error) if `spec.path` doesn't resolve at all, because it just
-/// means this slot kind isn't present on this recipe (e.g. no fluid inputs).
+/// An empty result (not an error) if `spec.path` doesn't resolve at all, because it just means
+/// this slot kind isn't present on this recipe (e.g. no fluid inputs).
 fn extract_input_slots(
     spec: &SlotSpec,
     value: &Value,

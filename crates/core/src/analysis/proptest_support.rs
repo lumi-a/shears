@@ -1,7 +1,7 @@
 //! Random small graphs for property tests.
 //!
-//! Item and recipe ids are meaningless placeholders (`"item000"`, `"recipe000"`,
-//! zero-padded so they stay lexicographically sorted regardless of count).
+//! Item and recipe ids are meaningless placeholders (`"item000"`, `"recipe000"`, zero-padded
+//! so they stay lexicographically sorted regardless of count).
 
 use std::collections::BTreeSet;
 
@@ -37,7 +37,8 @@ fn arb_raw_recipe(item_count: usize) -> impl Strategy<Value = RawRecipe> {
 /// A random small graph, the items it wants, and random edge states.
 ///
 /// Up to 9 items and 9 recipes, each with up to 3 inputs/outputs.
-pub(super) fn arb_graph_attrs_edges() -> impl Strategy<Value = (Graph, NodeAttrs, EdgeStates)> {
+pub(super) fn arb_graph_attrs_edges() -> impl Strategy<Value = (Graph, NodeAttrs, EdgeStates)>
+{
     (1_usize..=9, 0_usize..=9)
         .prop_flat_map(|(item_count, recipe_count)| {
             (
@@ -95,7 +96,9 @@ fn build(
             let inputs = raw
                 .inputs
                 .iter()
-                .map(|&position| Slot::new(BTreeSet::from([item_index(position)]), None, 1, 1.0))
+                .map(|&position| {
+                    Slot::new(BTreeSet::from([item_index(position)]), None, 1, 1.0)
+                })
                 .collect();
             let outputs = raw
                 .outputs
@@ -122,8 +125,8 @@ fn build(
             u32::try_from(recipe_position).expect("recipe_count stays far below u32::MAX"),
         );
         for output_position in 0..raw.outputs.len() {
-            let output =
-                u8::try_from(output_position).expect("outputs per recipe stay far below u8::MAX");
+            let output = u8::try_from(output_position)
+                .expect("outputs per recipe stay far below u8::MAX");
             let state = choices
                 .next()
                 .expect("one edge state generated per output, consumed in the same order");

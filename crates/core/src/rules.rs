@@ -1,11 +1,11 @@
 //! Rules set local analysis inputs from `rules.toml`.
 //!
-//! Ordered selector -> action pairs: required items, propagation, stage and
-//! decomposition. The last rule to match wins per attribute. Every rule must carry a
-//! reason, for the report's sake.
+//! Ordered selector -> action pairs: required items, propagation, stage and decomposition. The
+//! last rule to match wins per attribute. Every rule must carry a reason, for the report's
+//! sake.
 //!
-//! Every rule is either `[[item-rule]]` or `[[recipe-rule]]`. This header fixes which
-//! selector keys and which actions are valid for that rule.
+//! Every rule is either `[[item-rule]]` or `[[recipe-rule]]`. This header fixes which selector
+//! keys and which actions are valid for that rule.
 //!
 //! TODO: Document the possible filters and actions here? Or perhaps include a link to the
 //! documentation of both, which surely explain both things in detail.
@@ -33,9 +33,9 @@
 //! action = { propagate = "drop" }
 //! ```
 //!
-//! `apply_to_output`, only valid on `[[recipe-rule]]`, narrows `propagate` to just the
-//! matched recipe's outputs matching it, instead of every output; omitting it keeps
-//! the every-output default.
+//! `apply_to_output`, only valid on `[[recipe-rule]]`, narrows `propagate` to just the matched
+//! recipe's outputs matching it, instead of every output; omitting it keeps the every-output
+//! default.
 //!
 //! TODO: Describe the above examples better.
 
@@ -98,7 +98,8 @@ impl RecipeAction {
     ) {
         match *self {
             Self::Propagate(state) => {
-                for (output_position, output) in graph.recipe(recipe).outputs().iter().enumerate()
+                for (output_position, output) in
+                    graph.recipe(recipe).outputs().iter().enumerate()
                 {
                     if output_filter.is_some_and(|filter| {
                         !selector::matches_item(filter, graph, output.item())
@@ -164,8 +165,8 @@ impl RawRecipeAction {
     }
 }
 
-/// One `[[item-rule]]` table. `filter` isn't resolved into a [`Selector`] yet and
-/// `action` isn't turned into concrete actions yet.
+/// One `[[item-rule]]` table. `filter` isn't resolved into a [`Selector`] yet and `action`
+/// isn't turned into concrete actions yet.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawItemRule {
@@ -204,8 +205,8 @@ struct RawDocument {
     recipe_rule: Vec<RawRecipeRule>,
 }
 
-/// One `[[item-rule]]` entry, consisting of a selector, every action it sets on each
-/// match, and why it does so.
+/// One `[[item-rule]]` entry, consisting of a selector, every action it sets on each match,
+/// and why it does so.
 #[derive(Debug)]
 struct ItemRule {
     /// The reason behind this rule.
@@ -243,7 +244,11 @@ struct RecipeRule {
 // to parallelization / SIMD?
 
 /// Calls `visit` with every item in `graph` that `selector` matches.
-fn for_each_matching_item(graph: &Graph, selector: &Selector, mut visit: impl FnMut(ItemIndex)) {
+fn for_each_matching_item(
+    graph: &Graph,
+    selector: &Selector,
+    mut visit: impl FnMut(ItemIndex),
+) {
     for position in 0..graph.items().len() {
         let item = ItemIndex::new(u32::try_from(position).expect("fewer than u32::MAX items"));
         if selector::matches_item(selector, graph, item) {
@@ -267,8 +272,8 @@ fn for_each_matching_recipe(
     }
 }
 
-/// A `rules.toml` document's `[[item-rule]]` and `[[recipe-rule]]` entries, already
-/// parsed and validated.
+/// A `rules.toml` document's `[[item-rule]]` and `[[recipe-rule]]` entries, already parsed and
+/// validated.
 ///
 /// See the [module docs](self) for example rule files.
 #[derive(Debug, Default)]
@@ -320,13 +325,14 @@ impl RuleSet {
                         "item-rule[{position}]'s action table is empty, this rule does nothing"
                     ));
                 }
-                let selector = selector::parse(&raw.filter, Context::Item).map_err(|cause| {
-                    RuleError::InRule {
-                        array: "item-rule",
-                        position,
-                        source: Box::new(RuleError::Selector(cause)),
-                    }
-                })?;
+                let selector =
+                    selector::parse(&raw.filter, Context::Item).map_err(|cause| {
+                        RuleError::InRule {
+                            array: "item-rule",
+                            position,
+                            source: Box::new(RuleError::Selector(cause)),
+                        }
+                    })?;
                 Ok(ItemRule {
                     reason: raw.reason,
                     selector,
@@ -429,9 +435,16 @@ impl RuleSet {
     /// If this `RuleSet` has `u32::MAX` or more item rules or recipe rules, or a recipe
     /// has `u8::MAX` or more outputs.
     #[inline]
-    pub fn apply(&self, graph: &Graph, attrs: &mut NodeAttrs, edges: &mut EdgeStates, file: u16) {
+    pub fn apply(
+        &self,
+        graph: &Graph,
+        attrs: &mut NodeAttrs,
+        edges: &mut EdgeStates,
+        file: u16,
+    ) {
         for (position, rule) in self.item_rules.iter().enumerate() {
-            let index = u32::try_from(position).expect("fewer than u32::MAX rules in one file");
+            let index =
+                u32::try_from(position).expect("fewer than u32::MAX rules in one file");
             let cause = Cause::Rule {
                 file,
                 kind: RuleKind::Item,
@@ -444,7 +457,8 @@ impl RuleSet {
             });
         }
         for (position, rule) in self.recipe_rules.iter().enumerate() {
-            let index = u32::try_from(position).expect("fewer than u32::MAX rules in one file");
+            let index =
+                u32::try_from(position).expect("fewer than u32::MAX rules in one file");
             let cause = Cause::Rule {
                 file,
                 kind: RuleKind::Recipe,
@@ -639,11 +653,13 @@ mod tests {
 
         assert!(!attrs.is_required(ItemIndex::new(0)), "nothing was set");
         assert_eq!(rules.warnings().len(), 1);
-        assert!(rules
-            .warnings()
-            .first()
-            .expect("exactly one warning")
-            .contains("item-rule[0]"));
+        assert!(
+            rules
+                .warnings()
+                .first()
+                .expect("exactly one warning")
+                .contains("item-rule[0]")
+        );
     }
 
     #[test]

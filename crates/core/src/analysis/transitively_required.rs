@@ -12,9 +12,9 @@
 //! Starting from the required items and walking backwards through producers.
 //!
 //! The other alternatives, i.e. starting from non-required recipes with no transitively
-//! required successors, marking them as dead, and iterating, maintains the
-//! self-sustaining junk-cycles like (stone dust <-> small stone dust). Propagating
-//! transitive requirement prevents this.
+//! required successors, marking them as dead, and iterating, maintains the self-sustaining
+//! junk-cycles like (stone dust <-> small stone dust). Propagating transitive requirement
+//! prevents this.
 
 use core::iter::repeat_with;
 use std::collections::VecDeque;
@@ -41,8 +41,8 @@ pub enum Why {
     },
 }
 
-/// The result of [`transitively_required`]: which items and recipes are transitively
-/// required and why.
+/// The result of [`transitively_required`]: which items and recipes are transitively required
+/// and why.
 #[derive(Debug)]
 pub struct TransitivelyRequired {
     /// `item_bits.contains(item.index())`: whether `item` is transitively required.
@@ -104,8 +104,8 @@ impl TransitivelyRequired {
 
 /// Computes what's transitively required.
 ///
-/// Reverse BFS from `attrs`'s required items, over `graph`'s recipes, and only
-/// following edges `edges` marked [`EdgeState::Propagate`].
+/// Reverse BFS from `attrs`'s required items, over `graph`'s recipes, and only following edges
+/// `edges` marked [`EdgeState::Propagate`].
 ///
 /// # Panics
 ///
@@ -176,8 +176,8 @@ pub fn transitively_required(
     }
 }
 
-/// Naive reference version of [`transitively_required`]. Iterates the fixpoint equation
-/// to a fixed point by rescanning every recipe, instead of BFS.
+/// Naive reference version of [`transitively_required`]. Iterates the fixpoint equation to a
+/// fixed point by rescanning every recipe, instead of BFS.
 ///
 /// This is only used to test [`transitively_required`] against a structurally different
 /// implementation of the equation.
@@ -199,8 +199,9 @@ fn naive_transitively_required(
     loop {
         let mut changed = false;
         for (recipe_position, recipe) in graph.recipes().iter().enumerate() {
-            let recipe_index =
-                RecipeIndex::new(u32::try_from(recipe_position).expect("recipe count fits u32"));
+            let recipe_index = RecipeIndex::new(
+                u32::try_from(recipe_position).expect("recipe count fits u32"),
+            );
             for (output_position, output) in recipe.outputs().iter().enumerate() {
                 let output_index =
                     u8::try_from(output_position).expect("outputs per recipe fit u8");
@@ -236,7 +237,7 @@ fn naive_transitively_required(
 mod tests {
     use proptest::prelude::*;
 
-    use super::{naive_transitively_required, transitively_required, Why};
+    use super::{Why, naive_transitively_required, transitively_required};
     use crate::analysis::edges::{Cause, EdgeState, EdgeStates, NodeAttrs};
     use crate::analysis::proptest_support::arb_graph_attrs_edges;
     use crate::graph_dsl::parse;

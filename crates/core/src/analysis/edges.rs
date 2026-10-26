@@ -9,14 +9,14 @@ use crate::model::{Graph, ItemIndex, RecipeIndex};
 
 /// What a single `(recipe, output)` edge does for transitive-requirement propagation.
 ///
-/// TODO: This probably won't be sufficient later on. Later on, we'll probably want to
-/// have things like "This edge is only useful in LV, but not in MV+", or "This edge is
-/// only useful for builders, but not for technical aspects", and these states should be
-/// specified by the user, i.e. not known at compile-time.
+/// TODO: This probably won't be sufficient later on. Later on, we'll probably want to have
+/// things like "This edge is only useful in LV, but not in MV+", or "This edge is only useful
+/// for builders, but not for technical aspects", and these states should be specified by the
+/// user, i.e. not known at compile-time.
 ///
-/// TODO: What's the current functional difference between `Inert` and `Dropped`? If one
-/// of them is redundant, we could change this (and that'd also make the parsing for the
-/// propagate action easier, as it would just be a boolean).
+/// TODO: What's the current functional difference between `Inert` and `Dropped`? If one of
+/// them is redundant, we could change this (and that'd also make the parsing for the propagate
+/// action easier, as it would just be a boolean).
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum EdgeState {
     /// Normal: a transitively required output on this edge makes the recipe's inputs
@@ -30,8 +30,7 @@ pub enum EdgeState {
     Dropped,
 }
 
-/// Whether a recipe should be considered for visibility regardless of transitive
-/// requirement.
+/// Whether a recipe should be considered for visibility regardless of transitive requirement.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Show {
     /// Shown if it has a visible output on a non-dropped edge.
@@ -69,9 +68,9 @@ pub enum Cause {
 
 /// Which of a rules file's two rule arrays a [`Cause::Rule`] came from.
 ///
-/// TODO: I feel like we have this idiom (Item, Recipe) a lot throughout the codebase, but
-/// I may be wrong. If we have it a lot, maybe we should do something about that, but then
-/// again maybe not.
+/// TODO: I feel like we have this idiom (Item, Recipe) a lot throughout the codebase, but I
+/// may be wrong. If we have it a lot, maybe we should do something about that, but then again
+/// maybe not.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RuleKind {
     /// From an item-targeting rule (`[[item-rule]]`).

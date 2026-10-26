@@ -11,9 +11,10 @@ use std::path::{Path, PathBuf};
 
 fn extract_fixture(destination: &Path) {
     // Is this relative path stuff the correct way of doing things?
-    let archive_path =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/vanilla-1.20.1.tar.zst");
-    let archive = File::open(&archive_path).expect("the committed vanilla fixture should exist");
+    let archive_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures/vanilla-1.20.1.tar.zst");
+    let archive =
+        File::open(&archive_path).expect("the committed vanilla fixture should exist");
     let decoder = zstd::Decoder::new(archive).expect("a valid zstd stream");
     tar::Archive::new(decoder)
         .unpack(destination)
@@ -67,7 +68,9 @@ mod tests {
             report
                 .diagnostics
                 .iter()
-                .filter(|diagnostic| !diagnostic.message.contains("no adapter for recipe type"))
+                .filter(|diagnostic| !diagnostic
+                    .message
+                    .contains("no adapter for recipe type"))
                 .collect::<Vec<_>>()
         );
 

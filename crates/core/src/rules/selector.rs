@@ -10,8 +10,8 @@
 //!
 //! Applying to only recipes: `has_input`, `has_output`.
 //!
-//! `has_input` and `has_output`'s nested selector can also use `is_catalyst` alongside
-//! the item keys above.
+//! `has_input` and `has_output`'s nested selector can also use `is_catalyst` alongside the
+//! item keys above.
 //!
 //! ```toml
 //! # AND: both must match.
@@ -168,12 +168,12 @@ pub enum SelectorError {
 
 /// A selector tree, already parsed and validated for its [`Context`].
 ///
-/// TODO: There probably are many other things we want to do, e.g. a filter for chanced
-/// non-0 non-1 outputs, a selector for EU usage (less than / more than?), and a selector
-/// for "there exists a recipe that is almost identical, except it uses that item instead
-/// of this one" (this is useful e.g. to say that GT motors are better crafted in a
-/// crafting table than an assembler, or to prefer cutter recipes that use lubricant
-/// instead of water or distilled water).
+/// TODO: There probably are many other things we want to do, e.g. a filter for chanced non-0
+/// non-1 outputs, a selector for EU usage (less than / more than?), and a selector for "there
+/// exists a recipe that is almost identical, except it uses that item instead of this one"
+/// (this is useful e.g. to say that GT motors are better crafted in a crafting table than an
+/// assembler, or to prefer cutter recipes that use lubricant instead of water or distilled
+/// water).
 #[derive(Debug)]
 pub enum Selector {
     /// Every child must match (a TOML object).
@@ -208,8 +208,8 @@ pub enum Selector {
 ///
 /// # Errors
 ///
-/// If `value` isn't a table, array, or string, a key is unknown, a key's value has the
-/// wrong shape, or a key doesn't apply in `context` (e.g. `tag` on a recipe).
+/// If `value` isn't a table, array, or string, a key is unknown, a key's value has the wrong
+/// shape, or a key doesn't apply in `context` (e.g. `tag` on a recipe).
 #[inline]
 pub fn parse(value: &toml::Value, context: Context) -> Result<Selector, SelectorError> {
     match value {
@@ -270,7 +270,9 @@ fn parse_clause(
             .and_then(Pattern::parse)
             .map(Selector::Type),
         "tag" => string_value(value, "tag").map(|tag| Selector::Tag(tag.to_owned())),
-        "has_input" => parse(value, Context::Slot).map(|inner| Selector::Input(Box::new(inner))),
+        "has_input" => {
+            parse(value, Context::Slot).map(|inner| Selector::Input(Box::new(inner)))
+        }
         "has_output" => {
             parse(value, Context::Slot).map(|inner| Selector::Output(Box::new(inner)))
         }
@@ -282,7 +284,10 @@ fn parse_clause(
 }
 
 /// `value` as a string, or a [`SelectorError::WrongShape`] naming `key`.
-fn string_value<'v>(value: &'v toml::Value, key: &'static str) -> Result<&'v str, SelectorError> {
+fn string_value<'v>(
+    value: &'v toml::Value,
+    key: &'static str,
+) -> Result<&'v str, SelectorError> {
     value.as_str().ok_or(SelectorError::WrongShape {
         key,
         expected: "a string",
@@ -325,8 +330,8 @@ fn tag_index(graph: &Graph, tag: &str) -> Option<u32> {
 /// # Panics
 ///
 /// If `item` is out of bounds for `graph`. [`parse`] never constructs a recipe-only key
-/// (`has_input`/`has_output`) or `is_catalyst` for [`Context::Item`], so those arms
-/// should be unreachable by construction.
+/// (`has_input`/`has_output`) or `is_catalyst` for [`Context::Item`], so those arms should be
+/// unreachable by construction.
 #[inline]
 #[must_use]
 #[expect(
@@ -359,10 +364,9 @@ pub fn matches_item(selector: &Selector, graph: &Graph, item: ItemIndex) -> bool
 ///
 /// # Panics
 ///
-/// If `recipe` is out of bounds for `graph`, or `recipe`'s type index is out of bounds
-/// for `graph.recipe_types()`. [`parse`] never constructs the item-only `tag` key or
-/// `is_catalyst` for [`Context::Recipe`], so those arms are unreachable by
-/// construction.
+/// If `recipe` is out of bounds for `graph`, or `recipe`'s type index is out of bounds for
+/// `graph.recipe_types()`. [`parse`] never constructs the item-only `tag` key or `is_catalyst`
+/// for [`Context::Recipe`], so those arms are unreachable by construction.
 #[inline]
 #[must_use]
 #[expect(
@@ -412,9 +416,9 @@ pub fn matches_recipe(selector: &Selector, graph: &Graph, recipe: RecipeIndex) -
 ///
 /// # Panics
 ///
-/// If `member` is out of bounds for `graph`. [`parse`] never constructs the
-/// recipe-only keys (`has_input`/`has_output`) for [`Context::Slot`], so those arms are
-/// unreachable by construction.
+/// If `member` is out of bounds for `graph`. [`parse`] never constructs the recipe-only keys
+/// (`has_input`/`has_output`) for [`Context::Slot`], so those arms are unreachable by
+/// construction.
 #[inline]
 #[must_use]
 #[expect(
@@ -454,7 +458,7 @@ const fn is_catalyst(chance: f32) -> bool {
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::{matches_item, matches_recipe, parse, Context, Selector, SelectorError};
+    use super::{Context, Selector, SelectorError, matches_item, matches_recipe, parse};
     use crate::graph_dsl::parse as parse_graph;
     use crate::model::{Graph, Item, ItemIndex, ItemKind, Output, Recipe, RecipeIndex, Slot};
 
@@ -567,8 +571,8 @@ mod tests {
             toml::from_str(r#"filter = { tag = "forge:ingots" }"#).expect("valid test TOML");
         let wrapped = value.get("filter").expect("has filter").clone();
 
-        let error =
-            parse(&wrapped, Context::Recipe).expect_err("tag doesn't apply to a recipe selector");
+        let error = parse(&wrapped, Context::Recipe)
+            .expect_err("tag doesn't apply to a recipe selector");
 
         assert!(matches!(
             error,
@@ -732,8 +736,9 @@ mod tests {
             toml::from_str("filter = { is_catalyst = true }").expect("valid test TOML");
         let wrapped = value.get("filter").expect("has filter").clone();
 
-        let error = parse(&wrapped, Context::Item)
-            .expect_err("is_catalyst only applies inside has_input/has_output's nested selector");
+        let error = parse(&wrapped, Context::Item).expect_err(
+            "is_catalyst only applies inside has_input/has_output's nested selector",
+        );
 
         assert!(matches!(
             error,

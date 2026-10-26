@@ -2,8 +2,8 @@
 //!
 //! Problems turn into `Diagnostic`s in the returned `ParseReport`.
 //!
-//! Tags and the item/fluid registries are resolved first. Every recipe file can then be
-//! parsed to real ids without incomplete drafts.
+//! Tags and the item/fluid registries are resolved first. Every recipe file can then be parsed
+//! to real ids without incomplete drafts.
 
 mod ingredient;
 mod path;
@@ -61,8 +61,8 @@ impl ParseReport {
 
 /// A recipe, as read from its JSON, already resolved to real ids.
 ///
-/// The type is still a bare string, since the full set of types isn't known until every
-/// recipe file has been seen.
+/// The type is still a bare string, since the full set of types isn't known until every recipe
+/// file has been seen.
 #[derive(Debug)]
 struct RecipeDraft {
     /// The recipe id, taken from its file path.
@@ -77,8 +77,8 @@ struct RecipeDraft {
     ticks: Option<u32>,
 }
 
-/// The read-only lookups used while parsing the recipe files. This is built at the start
-/// from the registries and tags.
+/// The read-only lookups used while parsing the recipe files. This is built at the start from
+/// the registries and tags.
 struct Resolver<'a> {
     /// Every known item and fluid.
     item_index: &'a BTreeMap<String, ItemIndex>,
@@ -100,8 +100,8 @@ type RecipeAdapter = fn(String, &Value, &Resolver<'_>) -> Result<RecipeDraft, St
 ///
 /// # Panics
 ///
-/// Only if a single export has more than [`u32::MAX`] items, tags or recipe types, which
-/// isn't a real export this tool will ever see.
+/// Only if a single export has more than [`u32::MAX`] items, tags or recipe types, which isn't
+/// a real export this tool will ever see.
 #[must_use]
 #[expect(
     clippy::missing_inline_in_public_items,
@@ -172,9 +172,9 @@ pub fn ingest(files: &[RawFile]) -> (Graph, ParseReport) {
     (Graph::new(1, items, recipes, tags, rtypes), report)
 }
 
-/// Reads `registries/item.json`, `registries/fluid.json`, and every item and fluid tag
-/// file (`tags/minecraft/item/**`, `tags/minecraft/fluid/**`), returning raw members
-/// that aren't tag-resolved yet.
+/// Reads `registries/item.json`, `registries/fluid.json`, and every item and fluid tag file
+/// (`tags/minecraft/item/**`, `tags/minecraft/fluid/**`), returning raw members that aren't
+/// tag-resolved yet.
 ///
 /// Item and fluid tags share one namespace here, same as `Slot`/`Item` don't otherwise
 /// distinguish "an item tag" from "a fluid tag".
@@ -258,8 +258,8 @@ fn parse_tag_members(bytes: &[u8]) -> Result<Vec<String>, String> {
     }
 }
 
-/// Maps a raw file path under `tags/minecraft/item/` or `tags/minecraft/fluid/` to the
-/// tag id it defines.
+/// Maps a raw file path under `tags/minecraft/item/` or `tags/minecraft/fluid/` to the tag id
+/// it defines.
 ///
 /// For instance, maps `tags/minecraft/item/forge/dusts.json` to `forge:dusts`, and
 /// `tags/minecraft/fluid/forge/oxygen.json` to `forge:oxygen`.
@@ -274,8 +274,7 @@ fn tag_id_from_path(path: &str) -> Option<String> {
 
 /// Maps a raw file path under `recipes/` to the recipe id it defines.
 ///
-/// For instance, maps `recipes/minecraft/acacia_planks.json` to
-/// `minecraft:acacia_planks`.
+/// For instance, maps `recipes/minecraft/acacia_planks.json` to `minecraft:acacia_planks`.
 fn recipe_id_from_path(path: &str) -> Option<String> {
     let rest = path.strip_prefix("recipes/")?.strip_suffix(".json")?;
     let (namespace, name) = rest.split_once('/')?;
@@ -288,9 +287,9 @@ fn recipe_id_from_path(path: &str) -> Option<String> {
 /// TODO: This re-parses every recipe file's JSON, which is probably very bad, as IO and/or
 /// JSON parsing is already expected to be the bottleneck of the crate, no?
 ///
-/// Re-parses every recipe file's JSON, same as [`parse_recipes`] does later; a recipe
-/// that fails to parse here just contributes nothing, since it'll report its own
-/// diagnostic in that later, real pass.
+/// Re-parses every recipe file's JSON, same as [`parse_recipes`] does later; a recipe that
+/// fails to parse here just contributes nothing, since it'll report its own diagnostic in that
+/// later, real pass.
 fn discover_synthetic_item_keys(files: &[RawFile]) -> BTreeSet<String> {
     let mut keys = BTreeSet::new();
     for file in files {
@@ -359,17 +358,14 @@ fn build_items(
 
 /// Resolves a tag to its concrete, recursively-expanded members.
 ///
-/// Memoizes into `resolved`. Also guards against a reference cycle and reports it in
-/// `report`.
+/// Memoizes into `resolved`. Also guards against a reference cycle and reports it in `report`.
 ///
-/// A trailing `?` on an entry is Minecraft's own 'optional member' marker.
-/// Some mods write `"modid:item?"` or `"#modid:tag?"` for a member that may not exist
-/// (e.g. when that mod isn't loaded.
-/// This is silently skipped in-game, so we skip it silently too rather than report it.
+/// A trailing `?` on an entry is Minecraft's own 'optional member' marker. Some mods write
+/// `"modid:item?"` or `"#modid:tag?"` for a member that may not exist (e.g. when that mod
+/// isn't loaded. This is silently skipped in-game, so we skip it silently too rather than
+/// report it.
 ///
-/// TODO: For all these strange suffixes like that, should we not at least also evaluate tags
-/// in the future against minecraft's identifier spec, to notice when there are strange ids
-/// going on? The spec in Java Edition is, taken from <https://minecraft.wiki/w/Identifier>:
+/// TODO: For all these strange suffixes like that, should we not at least also evaluate tags in the future against minecraft's identifier spec, to notice when there are strange ids going on? The spec in Java Edition is, taken from <https://minecraft.wiki/w/Identifier>:
 ///
 /// - The namespace and the path may only contain `[.0-9a-z_-]`.
 /// - The path (but not the namespace) may additionally contain a forward slash `/`.
@@ -424,8 +420,8 @@ fn resolve_tag(
 ///
 /// A tag member that isn't a known item is reported in `report`.
 ///
-/// Resolved (and interned) regardless of whether any recipe currently references it.
-/// Unused tags really aren't our business.
+/// Resolved (and interned) regardless of whether any recipe currently references it. Unused
+/// tags really aren't our business.
 fn resolve_all_tags(
     raw_tags: &BTreeMap<String, Vec<String>>,
     item_index: &BTreeMap<String, ItemIndex>,
@@ -513,13 +509,13 @@ fn consumed_slot(
 /// How far outside `[0, 1]` a chance value may lie.
 pub const CHANCE_TOLERANCE: f32 = 1e-5;
 
-/// Validates a chance value read from the export, clamping it into `[0, 1]` if it's
-/// only off by noise.
+/// Validates a chance value read from the export, clamping it into `[0, 1]` if it's only off
+/// by noise.
 ///
-/// TODO: If the number is <= 0 + `CHANCE_TOLERANCE` or >= 1 - `CHANCE_TOLERANCE`, should
-/// we also clamp it to 0 or 1 respectively? That would help with checks like "This is a
-/// catalyst" and "this is a definitely consumed item", in case some recipes have, for any
-/// reason, messed up numbers there.
+/// TODO: If the number is <= 0 + `CHANCE_TOLERANCE` or >= 1 - `CHANCE_TOLERANCE`, should we
+/// also clamp it to 0 or 1 respectively? That would help with checks like "This is a catalyst"
+/// and "this is a definitely consumed item", in case some recipes have, for any reason, messed
+/// up numbers there.
 ///
 /// TODO: This function should be used.
 ///
@@ -549,8 +545,8 @@ fn resolve_output_id(id: &str, resolver: &Resolver<'_>) -> Result<ItemIndex, Str
 ///
 /// Unhandled types are counted in the report but don't produce a draft.
 ///
-/// TODO: Unhandled types should be handled and produce a draft, *AND* add a message to
-/// the report complaining about the unknown type.
+/// TODO: Unhandled types should be handled and produce a draft, *AND* add a message to the
+/// report complaining about the unknown type.
 fn parse_recipes(
     files: &[RawFile],
     resolver: &Resolver<'_>,

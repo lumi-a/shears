@@ -1,7 +1,7 @@
 //! Graph model and analysis for shears, a `KubeJS` recipe-graph tool.
 //!
-//! No filesystem access and no threads unless the `fs` and `parallel` features are
-//! enabled. With both off it builds for `wasm32-unknown-unknown`.
+//! No filesystem access and no threads unless the `fs` and `parallel` features are enabled.
+//! With both off it builds for `wasm32-unknown-unknown`.
 
 // This lint only fires when this crate's own `lib test` harness compiles (the harness
 // is itself a binary, unlike the plain `lib` build), so it's gated on `cfg(test)`.

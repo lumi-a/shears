@@ -3,9 +3,11 @@
 //! ```text required concrete mix:    stone_dust + water -> concrete pack:   4
 //! small_stone_dust -> stone_dust unpack: stone_dust -> 4 small_stone_dust ```
 //!
-//! One `required` line lists required items, space-separated. Every other non-blank line is a recipe: A name, `:`, `+`-separated inputs, `->`, then `+`-separated outputs.
+//! One `required` line lists required items, space-separated. Every other non-blank line is a
+//! recipe: A name, `:`, `+`-separated inputs, `->`, then `+`-separated outputs.
 //!
-//! Each input or output is `[count] item`, the count defaulting to 1. Lines are trimmed before parsing.
+//! Each input or output is `[count] item`, the count defaulting to 1. Lines are trimmed before
+//! parsing.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -47,8 +49,9 @@ fn parse_term(term: &str) -> RawTerm {
     let trimmed = term.trim();
     let (count, name) = match trimmed.split_once(char::is_whitespace) {
         Some((head, rest)) => (
-            head.parse()
-                .unwrap_or_else(|_| panic!("expected a count before {rest:?}, found {head:?}")),
+            head.parse().unwrap_or_else(|_| {
+                panic!("expected a count before {rest:?}, found {head:?}")
+            }),
             rest.trim(),
         ),
         None => (1, trimmed),
@@ -134,7 +137,8 @@ pub(crate) fn parse(source: &str) -> (Graph, BTreeSet<ItemIndex>) {
         .iter()
         .enumerate()
         .map(|(position, name)| {
-            let item_position = u32::try_from(position).expect("fewer than u32::MAX test items");
+            let item_position =
+                u32::try_from(position).expect("fewer than u32::MAX test items");
             (name.clone(), ItemIndex::new(item_position))
         })
         .collect();
