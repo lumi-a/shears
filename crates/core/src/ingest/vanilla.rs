@@ -31,7 +31,7 @@ fn parse_result_object(value: &Value, resolver: &Resolver<'_>) -> Result<Output,
         Some(count_value) => as_u32(count_value)
             .ok_or_else(|| "`result.count` exists but is not a number".to_owned())?,
     };
-    let item = resolve_output_id(id, resolver)?;
+    let item = resolve_output_id(id, resolver);
     Ok(Output::new(item, count, 1.0))
 }
 
@@ -41,7 +41,7 @@ fn parse_result_object(value: &Value, resolver: &Resolver<'_>) -> Result<Output,
 fn parse_result(value: &Value, resolver: &Resolver<'_>) -> Result<Output, String> {
     match value {
         Value::String(id) => {
-            let item = resolve_output_id(id, resolver)?;
+            let item = resolve_output_id(id, resolver);
             Ok(Output::new(item, 1, 1.0))
         }
         Value::Object(_) => parse_result_object(value, resolver),
@@ -231,7 +231,7 @@ pub(super) fn stonecutting(
         .get("result")
         .and_then(Value::as_str)
         .ok_or_else(|| "`result` is not a bare item id".to_owned())?;
-    let output_item = resolve_output_id(result, resolver)?;
+    let output_item = resolve_output_id(result, resolver);
     let count = match value.get("count") {
         None => 1,
         Some(count_value) => {
@@ -282,6 +282,7 @@ pub(super) fn smithing_transform(
 
 #[cfg(test)]
 mod tests {
+    use core::cell::RefCell;
     use std::collections::{BTreeMap, BTreeSet};
 
     use serde_json::json;
@@ -289,35 +290,33 @@ mod tests {
     use super::{
         cooking, crafting_shaped, crafting_shapeless, smithing_transform, stonecutting,
     };
-    use crate::ingest::Resolver;
+    use crate::ingest::{ItemInterner, Resolver};
     use crate::model::ItemIndex;
 
-    /// A small item universe and no tags.
-    fn item_only_resolver(
-        keys: &[&str],
-    ) -> (BTreeMap<String, ItemIndex>, BTreeMap<String, u32>) {
-        let item_index = keys
-            .iter()
-            .enumerate()
-            .map(|(index, &key)| {
-                (
-                    key.to_owned(),
-                    ItemIndex::new(u32::try_from(index).expect("fits")),
-                )
-            })
-            .collect();
-        (item_index, BTreeMap::new())
+    /// An empty-tags resolver, backed by a fresh [`ItemInterner`].
+    #[expect(
+        clippy::type_complexity,
+        reason = "test-only helper tuple, a type alias would just move the complexity"
+    )]
+    fn plain_resolver() -> (
+        RefCell<ItemInterner>,
+        BTreeMap<String, u32>,
+        BTreeMap<String, &'static BTreeSet<ItemIndex>>,
+    ) {
+        (
+            RefCell::new(ItemInterner::default()),
+            BTreeMap::new(),
+            BTreeMap::new(),
+        )
     }
 
     #[test]
     fn crafting_shaped_counts_pattern_occurrences() {
-        let (item_index, tag_index) =
-            item_only_resolver(&["minecraft:acacia_planks", "minecraft:acacia_trapdoor"]);
-        let tag_members = BTreeMap::new();
+        let (interner, tag_index, tag_members) = plain_resolver();
         let resolver = Resolver {
-            item_index: &item_index,
             tag_index: &tag_index,
             tag_members: &tag_members,
+            interner: &interner,
         };
 
         let draft = crafting_shaped(
@@ -335,24 +334,18 @@ mod tests {
         assert_eq!(draft.inputs.len(), 1);
         assert_eq!(draft.inputs.first().expect("one input slot").count(), 6);
         let output = draft.outputs.first().expect("one output");
-        assert_eq!(
-            output.item(),
-            *item_index
-                .get("minecraft:acacia_trapdoor")
-                .expect("test item")
-        );
+        let expected = interner.borrow_mut().intern("minecraft:acacia_trapdoor");
+        assert_eq!(output.item(), expected);
         assert_eq!(output.count(), 2);
     }
 
     #[test]
     fn crafting_shaped_rejects_a_key_symbol_above_the_basic_multilingual_plane() {
-        let (item_index, tag_index) =
-            item_only_resolver(&["minecraft:acacia_planks", "minecraft:acacia_trapdoor"]);
-        let tag_members = BTreeMap::new();
+        let (interner, tag_index, tag_members) = plain_resolver();
         let resolver = Resolver {
-            item_index: &item_index,
             tag_index: &tag_index,
             tag_members: &tag_members,
+            interner: &interner,
         };
 
         // U+1F642 is one Rust `char` but two UTF-16 code units (a surrogate pair) —
@@ -379,13 +372,11 @@ mod tests {
 
     #[test]
     fn crafting_shaped_defaults_missing_result_count_to_one() {
-        let (item_index, tag_index) =
-            item_only_resolver(&["minecraft:acacia_planks", "minecraft:acacia_boat"]);
-        let tag_members = BTreeMap::new();
+        let (interner, tag_index, tag_members) = plain_resolver();
         let resolver = Resolver {
-            item_index: &item_index,
             tag_index: &tag_index,
             tag_members: &tag_members,
+            interner: &interner,
         };
 
         let draft = crafting_shaped(
@@ -405,19 +396,16 @@ mod tests {
 
     #[test]
     fn crafting_shapeless_merges_duplicate_ingredients_into_one_slot() {
-        let item_index: BTreeMap<String, ItemIndex> = BTreeMap::from([
-            ("minecraft:acacia_log".to_owned(), ItemIndex::new(0)),
-            ("minecraft:acacia_planks".to_owned(), ItemIndex::new(1)),
-        ]);
         let tag_index: BTreeMap<String, u32> =
             BTreeMap::from([("minecraft:acacia_logs".to_owned(), 0)]);
         let acacia_logs: BTreeSet<ItemIndex> = BTreeSet::from([ItemIndex::new(0)]);
         let tag_members: BTreeMap<String, &BTreeSet<ItemIndex>> =
             BTreeMap::from([("minecraft:acacia_logs".to_owned(), &acacia_logs)]);
+        let interner = RefCell::new(ItemInterner::default());
         let resolver = Resolver {
-            item_index: &item_index,
             tag_index: &tag_index,
             tag_members: &tag_members,
+            interner: &interner,
         };
 
         let draft = crafting_shapeless(
@@ -438,13 +426,11 @@ mod tests {
 
     #[test]
     fn cooking_reads_a_bare_string_result_and_cookingtime() {
-        let (item_index, tag_index) =
-            item_only_resolver(&["minecraft:baked_potato", "minecraft:potato"]);
-        let tag_members = BTreeMap::new();
+        let (interner, tag_index, tag_members) = plain_resolver();
         let resolver = Resolver {
-            item_index: &item_index,
             tag_index: &tag_index,
             tag_members: &tag_members,
+            interner: &interner,
         };
 
         let draft = cooking(
@@ -460,10 +446,8 @@ mod tests {
         .expect("a well-formed cooking recipe");
 
         let output = draft.outputs.first().expect("one output");
-        assert_eq!(
-            output.item(),
-            *item_index.get("minecraft:baked_potato").expect("test item")
-        );
+        let expected = interner.borrow_mut().intern("minecraft:baked_potato");
+        assert_eq!(output.item(), expected);
         assert_eq!(draft.ticks, Some(200));
     }
 
@@ -471,15 +455,11 @@ mod tests {
     fn cooking_also_reads_an_object_result_with_a_count() {
         // GTCEu smelting recipes commonly use the object form instead of
         // vanilla's bare strings.
-        let (item_index, tag_index) = item_only_resolver(&[
-            "projectred_core:red_silicon_comp",
-            "projectred_core:infused_silicon",
-        ]);
-        let tag_members = BTreeMap::new();
+        let (interner, tag_index, tag_members) = plain_resolver();
         let resolver = Resolver {
-            item_index: &item_index,
             tag_index: &tag_index,
             tag_members: &tag_members,
+            interner: &interner,
         };
 
         let draft = cooking(
@@ -495,24 +475,20 @@ mod tests {
         .expect("a well-formed cooking recipe with an object result");
 
         let output = draft.outputs.first().expect("one output");
-        assert_eq!(
-            output.item(),
-            *item_index
-                .get("projectred_core:infused_silicon")
-                .expect("test item")
-        );
+        let expected = interner
+            .borrow_mut()
+            .intern("projectred_core:infused_silicon");
+        assert_eq!(output.item(), expected);
         assert_eq!(output.count(), 2);
     }
 
     #[test]
     fn stonecutting_applies_count_to_the_output() {
-        let (item_index, tag_index) =
-            item_only_resolver(&["minecraft:andesite", "minecraft:andesite_slab"]);
-        let tag_members = BTreeMap::new();
+        let (interner, tag_index, tag_members) = plain_resolver();
         let resolver = Resolver {
-            item_index: &item_index,
             tag_index: &tag_index,
             tag_members: &tag_members,
+            interner: &interner,
         };
 
         let draft = stonecutting(
@@ -532,17 +508,11 @@ mod tests {
 
     #[test]
     fn smithing_transform_reads_all_three_input_slots() {
-        let (item_index, tag_index) = item_only_resolver(&[
-            "minecraft:diamond_leggings",
-            "minecraft:netherite_ingot",
-            "minecraft:netherite_leggings",
-            "minecraft:netherite_upgrade_smithing_template",
-        ]);
-        let tag_members = BTreeMap::new();
+        let (interner, tag_index, tag_members) = plain_resolver();
         let resolver = Resolver {
-            item_index: &item_index,
             tag_index: &tag_index,
             tag_members: &tag_members,
+            interner: &interner,
         };
 
         let draft = smithing_transform(
@@ -560,11 +530,7 @@ mod tests {
 
         assert_eq!(draft.inputs.len(), 3);
         let output = draft.outputs.first().expect("one output");
-        assert_eq!(
-            output.item(),
-            *item_index
-                .get("minecraft:netherite_leggings")
-                .expect("test item")
-        );
+        let expected = interner.borrow_mut().intern("minecraft:netherite_leggings");
+        assert_eq!(output.item(), expected);
     }
 }

@@ -21,13 +21,13 @@
 
 use core::time::Duration;
 
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, Criterion};
 use shears_core::ingest;
 
 #[path = "../tests/support/mod.rs"]
 mod support;
 
-/// Benchmarks `ingest()` over the real Monifactory fixture
+/// Benchmarks `ingest()` over the real Monifactory fixture.
 fn bench_ingest(c: &mut Criterion) {
     let files = support::read_fixture_in_memory(&support::archive_path());
 

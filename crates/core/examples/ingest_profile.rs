@@ -19,6 +19,7 @@
     reason = "profiling target, not a real binary"
 )]
 
+use std::collections::BTreeMap;
 use std::time::Instant;
 
 use shears_core::{ingest, io};
@@ -50,4 +51,21 @@ fn main() {
     println!("recipes: {}", graph.recipes().len());
     println!("tags: {}", graph.tags().len());
     println!("diagnostics: {}", report.diagnostics.len());
+    println!(
+        "registered_but_unreferenced: {}",
+        report.registered_but_unreferenced.len()
+    );
+
+    let mut by_message_prefix: BTreeMap<&str, u32> = BTreeMap::new();
+    for diagnostic in &report.diagnostics {
+        let key = diagnostic
+            .message
+            .split(':')
+            .next()
+            .unwrap_or(&diagnostic.message);
+        *by_message_prefix.entry(key).or_insert(0) += 1;
+    }
+    for (message, count) in &by_message_prefix {
+        println!("  {count:>6}  {message}");
+    }
 }

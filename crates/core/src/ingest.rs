@@ -2,14 +2,23 @@
 //!
 //! Problems turn into `Diagnostic`s in the returned `ParseReport`.
 //!
-//! Tags and the item/fluid registries are resolved first. Every recipe file can then be parsed
-//! to real ids without incomplete drafts.
+//! No item or fluid id's index is final until every recipe file has been seen. Everything
+//! passes through `ItemInterner` during a single pass over the recipe files. The registries
+//! (`registries/item.json`, `registries/fluid.json`) and the tag files are still read first,
+//! but only to get the plain sets of known ids as strings. Once every recipe has been seen,
+//! `ItemInterner::finish` merges every referenced id with every registered one, sorts
+//! the result, and hands back a table to remap every provisional index to its final one.
+//!
+//! This also means no id's reference can ever fail to resolve during parsing. A typo'd item id
+//! gets interned exactly like a real one and is reported afterwards once the full registry
+//! is available to check against.
 
 mod ingredient;
 mod path;
 mod shapes;
 mod vanilla;
 
+use core::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
@@ -47,6 +56,8 @@ pub struct ParseReport {
     pub diagnostics: Vec<Diagnostic>,
     /// Number of recipe files seen, by their declared `type`.
     pub recipe_type_counts: BTreeMap<String, u32>,
+    /// Every registered id that no recipe or tag ever references, sorted.
+    pub registered_but_unreferenced: Vec<String>,
 }
 
 impl ParseReport {
@@ -59,7 +70,7 @@ impl ParseReport {
     }
 }
 
-/// A recipe, as read from its JSON, already resolved to real ids.
+/// A recipe, as read from its JSON, already resolved to provisional ids.
 ///
 /// The type is still a bare string, since the full set of types isn't known until every recipe
 /// file has been seen.
@@ -77,15 +88,92 @@ struct RecipeDraft {
     ticks: Option<u32>,
 }
 
-/// The read-only lookups used while parsing the recipe files. This is built at the start from
-/// the registries and tags.
+/// The lookups used while parsing the recipe files.
 struct Resolver<'a> {
-    /// Every known item and fluid.
-    item_index: &'a BTreeMap<String, ItemIndex>,
     /// Index into [`Graph::tags`] for the tags.
     tag_index: &'a BTreeMap<String, u32>,
-    /// Resolved, transitively-expanded members for every tag in `tag_index`.
+    /// Resolved, transitively-expanded members for every tag in `tag_index`, already interned
+    /// (provisionally, same as every other [`ItemIndex`] here, not final until
+    /// [`ItemInterner::finish`]).
     tag_members: &'a BTreeMap<String, &'a BTreeSet<ItemIndex>>,
+    /// Every item/fluid id seen so far, interned as it's first referenced. See
+    /// [`ItemInterner`].
+    interner: &'a RefCell<ItemInterner>,
+}
+
+/// Interns every item/fluid id referenced while parsing a recipe (directly, or via a tag's
+/// expanded members).
+///
+/// A plain registered id and a synthetic one (folded from a base id and an NBT string or
+/// circuit configuration, see `shapes::fold_id_suffix`) are treated identically here.
+///
+/// None of this is final until every recipe file has been seen because that's the only point
+/// at which the full set of referenced ids is known, which is needed to sort them
+/// (determinism).So [`ItemInterner::intern`] hands out a provisional index for now, in
+/// first-seen-order. [`ItemInterner::finish`] merges every interned id with every registered
+/// one (so a registered-but-unreferenced id still gets a place in `Graph::items`), sorts the
+/// result, and hands back a table remapping every provisional index to its final one.
+#[derive(Debug, Default)]
+struct ItemInterner {
+    /// Every id referenced so far, to its provisional index.
+    by_key: BTreeMap<String, ItemIndex>,
+}
+
+impl ItemInterner {
+    /// Interns `key`, returning its provisional index. Stable across repeated calls with the
+    /// same key.
+    ///
+    /// # Panics
+    ///
+    /// Only if a single export references more than [`u32::MAX`] distinct ids, which isn't a
+    /// real export this tool will ever see.
+    fn intern(&mut self, key: &str) -> ItemIndex {
+        if let Some(&index) = self.by_key.get(key) {
+            return index;
+        }
+        let index = ItemIndex::new(u32::try_from(self.by_key.len()).expect(
+            "fewer than u32::MAX referenced ids in one export. \
+            Please open an issue if this is a problem for you.",
+        ));
+        let _: Option<ItemIndex> = self.by_key.insert(key.to_owned(), index);
+        index
+    }
+
+    /// Consumes every interned id, merges it with every id in `registered` (so a
+    /// registered-but-unreferenced id still gets a place in the final set), and returns the
+    /// merged, sorted key list plus a table mapping a provisional index to its final one.
+    fn finish(
+        self,
+        registered: impl Iterator<Item = String>,
+    ) -> (Vec<String>, Vec<ItemIndex>) {
+        let mut final_keys: BTreeSet<String> = self.by_key.keys().cloned().collect();
+        final_keys.extend(registered);
+        let sorted_keys: Vec<String> = final_keys.into_iter().collect();
+
+        let final_index_of: BTreeMap<&str, ItemIndex> = sorted_keys
+            .iter()
+            .enumerate()
+            .map(|(index, key)| {
+                let index_u32 = u32::try_from(index).expect(
+                    "fewer than u32::MAX items in one export. \
+                    Please open an issue if this is a problem for you.",
+                );
+                (key.as_str(), ItemIndex::new(index_u32))
+            })
+            .collect();
+
+        let mut remap = vec![ItemIndex::new(0); self.by_key.len()];
+        for (key, provisional) in &self.by_key {
+            let final_index = *final_index_of
+                .get(key.as_str())
+                .expect("every referenced key is included in final_keys by construction");
+            *remap
+                .get_mut(provisional.index())
+                .expect("provisional indices are 0..by_key.len(), the exact size of remap") =
+                final_index;
+        }
+        (sorted_keys, remap)
+    }
 }
 
 /// A per-recipe-type parsing function.
@@ -110,10 +198,19 @@ type RecipeAdapter = fn(String, &Value, &Resolver<'_>) -> Result<RecipeDraft, St
 pub fn ingest(files: &[RawFile]) -> (Graph, ParseReport) {
     let mut report = ParseReport::default();
 
-    let (mut item_keys, fluid_keys, raw_tags) = read_registries_and_tags(files, &mut report);
-    item_keys.extend(discover_synthetic_item_keys(files));
-    let (sorted_keys, item_index) = build_item_index(&item_keys, &fluid_keys, &mut report);
-    let (tags, tag_members_by_id) = resolve_all_tags(&raw_tags, &item_index, &mut report);
+    let (item_keys, fluid_keys, raw_tags) = read_registries_and_tags(files, &mut report);
+    let registered: BTreeSet<&str> = item_keys
+        .iter()
+        .chain(fluid_keys.iter())
+        .map(String::as_str)
+        .collect();
+
+    // The interner is created before tags are resolved.
+    // A tag's members are interned once here, instead of keeping it as tags and letting
+    // recipes handle it. Tags are shared across recipes often, so this is more efficient.
+    let interner_cell = RefCell::new(ItemInterner::default());
+    let (tags, provisional_tag_members) =
+        resolve_all_tags(&raw_tags, &registered, &interner_cell, &mut report);
     let tag_index: BTreeMap<String, u32> = tags
         .iter()
         .enumerate()
@@ -126,17 +223,45 @@ pub fn ingest(files: &[RawFile]) -> (Graph, ParseReport) {
             )
         })
         .collect();
-    let tag_members: BTreeMap<String, &BTreeSet<ItemIndex>> =
-        tags.iter().cloned().zip(tag_members_by_id.iter()).collect();
-    let items = build_items(sorted_keys, &tag_members_by_id);
+    let tag_members: BTreeMap<String, &BTreeSet<ItemIndex>> = tags
+        .iter()
+        .cloned()
+        .zip(provisional_tag_members.iter())
+        .collect();
 
     let resolver = Resolver {
-        item_index: &item_index,
         tag_index: &tag_index,
         tag_members: &tag_members,
+        interner: &interner_cell,
     };
     let mut recipe_drafts = parse_recipes(files, &resolver, &mut report);
     recipe_drafts.sort_unstable_by(|(_, a), (_, b)| a.id.cmp(&b.id));
+
+    let interner = interner_cell.into_inner();
+    let referenced: BTreeSet<String> = interner.by_key.keys().cloned().collect();
+    let (sorted_keys, remap) =
+        interner.finish(item_keys.iter().chain(fluid_keys.iter()).cloned());
+    remap_item_indices(&mut recipe_drafts, &remap);
+
+    let tag_members_by_id: Vec<BTreeSet<ItemIndex>> = provisional_tag_members
+        .iter()
+        .map(|members| {
+            members
+                .iter()
+                .copied()
+                .map(|id| remap_index(id, &remap))
+                .collect()
+        })
+        .collect();
+
+    let items = build_items(
+        &sorted_keys,
+        &item_keys,
+        &fluid_keys,
+        &referenced,
+        &tag_members_by_id,
+        &mut report,
+    );
 
     let mut rtypes: Vec<String> = report.recipe_type_counts.keys().cloned().collect();
     rtypes.sort_unstable();
@@ -271,97 +396,99 @@ fn recipe_id_from_path(path: &str) -> Option<String> {
     Some(format!("{namespace}:{name}"))
 }
 
-/// Finds every item id that would only exist because a recipe synthetically added it, e.g. the
-/// programmable circuit item or an NBT-suffixed tool.
+/// Builds the final `Item` list, in `sorted_keys`' order.
 ///
-/// TODO: This re-parses every recipe file's JSON, which is probably very bad, as IO and/or
-/// JSON parsing is already expected to be the bottleneck of the crate, no?
-///
-/// Re-parses every recipe file's JSON, same as [`parse_recipes`] does later; a recipe that
-/// fails to parse here just contributes nothing, since it'll report its own diagnostic in that
-/// later, real pass.
-fn discover_synthetic_item_keys(files: &[RawFile]) -> BTreeSet<String> {
-    let mut keys = BTreeSet::new();
-    for file in files {
-        if !file.path.starts_with("recipes/") {
-            continue;
-        }
-        if let Ok(value) = serde_json::from_slice::<Value>(&file.bytes) {
-            shapes::collect_synthetic_item_keys(&value, &mut keys);
-        }
-    }
-    keys
-}
-
-/// Builds the sorted item/fluid list and its key-to-id lookup.
-///
-/// Doesn't depend on recipes or tags.
-///
-/// An id that's registered as both an item and a fluid (e.g. some Nuclearcraft Neoteric salts)
-/// silently collapses to just the fluid today. This is reported in `report` at least.
-///
-/// TODO: To avoid this, separate registries would be necessary. Perhaps we should separate
-/// Items into a vector (yes, execution-time, because I don't trust that mods won't do custom
-/// registry stuff), i.e. one entry of this vector holds all the item-indices, ne holds all the
-/// fluid-indices, the next holds maybe another-registry's indices.
-fn build_item_index(
+/// Classifies each key by checking `item_keys`/`fluid_keys`.
+/// - Both means a registered item/fluid collision. This is reported, and the fluid wins.
+///   (TODO: Should the item not win? Feels like it would cause slightly fewer problems.)
+/// - Neither means the key was only ever *referenced*, never registered. Either a synthetic
+///   id, or an unknown-to-the-registers item, in which case it's reported.
+/// - Also collects every registered id that's in neither `referenced` into
+///   [`ParseReport::registered_but_unreferenced`]. These are items or fluids that no recipe
+///   ever mentions. (TODO: Should probably not count tags as direct references, unless the tag
+///   is actually referenced somewhere)
+fn build_items(
+    sorted_keys: &[String],
     item_keys: &BTreeSet<String>,
     fluid_keys: &BTreeSet<String>,
-    report: &mut ParseReport,
-) -> (Vec<(String, ItemKind)>, BTreeMap<String, ItemIndex>) {
-    let mut all_keys: BTreeMap<String, ItemKind> = item_keys
-        .iter()
-        .cloned()
-        .map(|key| (key, ItemKind::Item))
-        .collect();
-    for key in fluid_keys {
-        if all_keys.contains_key(key) {
-            report.fail(
-                key,
-                "registered as both an item and a fluid, only the fluid will be kept",
-            );
-        }
-        let _: Option<ItemKind> = all_keys.insert(key.clone(), ItemKind::Fluid);
-    }
-    let sorted_keys: Vec<(String, ItemKind)> = all_keys.into_iter().collect();
-
-    let item_index: BTreeMap<String, ItemIndex> = sorted_keys
-        .iter()
-        .enumerate()
-        .map(|(index, (key, _))| {
-            let index_u32 = u32::try_from(index).expect("fewer than u32::MAX items in one export. Please open an issue if this is a problem for you.");
-            (key.clone(), ItemIndex::new(index_u32))
-        })
-        .collect();
-
-    (sorted_keys, item_index)
-}
-
-/// Builds the final item list, now adding each item's tag membership.
-///
-/// `tag_members` is in the same order as the final `tags` list.
-fn build_items(
-    sorted_keys: Vec<(String, ItemKind)>,
+    referenced: &BTreeSet<String>,
     tag_members: &[BTreeSet<ItemIndex>],
+    report: &mut ParseReport,
 ) -> Vec<Item> {
-    sorted_keys
+    let all_registered: BTreeSet<&String> =
+        item_keys.iter().chain(fluid_keys.iter()).collect();
+    report.registered_but_unreferenced = all_registered
         .into_iter()
+        .filter(|key| !referenced.contains(key.as_str()))
+        .cloned()
+        .collect();
+
+    sorted_keys
+        .iter()
         .enumerate()
-        .map(|(index, (key, kind))| {
-            let id =
-                ItemIndex::new(u32::try_from(index).expect("fewer than u32::MAX items in one export. Please open an issue if this is a problem for you."));
+        .map(|(index, key)| {
+            let id = ItemIndex::new(u32::try_from(index).expect("fewer than u32::MAX items in one export. Please open an issue if this is a problem for you."));
+            let is_item = item_keys.contains(key);
+            let is_fluid = fluid_keys.contains(key);
+            let kind = if is_item && is_fluid {
+                report.fail(
+                    key,
+                    "registered as both an item and a fluid, only the fluid will be kept",
+                );
+                ItemKind::Fluid
+            } else if is_fluid {
+                ItemKind::Fluid
+            } else if is_item {
+                ItemKind::Item
+            } else {
+                if !key.contains('{') {
+                    report.fail(key, "referenced by a recipe, but not a registered item or fluid");
+                }
+                ItemKind::Item
+            };
             let item_tags: BTreeSet<u32> = tag_members
                 .iter()
                 .enumerate()
                 .filter(|&(_, members)| members.contains(&id))
                 .map(|(tag_index, _)| u32::try_from(tag_index).expect("fewer than u32::MAX tags. Please open an issue if this is a problem for you."))
                 .collect();
-            Item::new(key, kind, item_tags)
+            Item::new(key.clone(), kind, item_tags)
         })
         .collect()
 }
 
-/// Resolves a tag to its concrete, recursively-expanded members.
+/// Rewrites every provisional [`ItemIndex`] in `drafts` to its final one, per `remap` (see
+/// [`ItemInterner::finish`]).
+fn remap_item_indices(drafts: &mut [(String, RecipeDraft)], remap: &[ItemIndex]) {
+    for (_, draft) in drafts.iter_mut() {
+        for slot in &mut draft.inputs {
+            let members: BTreeSet<ItemIndex> = slot
+                .members()
+                .iter()
+                .copied()
+                .map(|id| remap_index(id, remap))
+                .collect();
+            *slot = Slot::new(members, slot.tag(), slot.count(), slot.chance());
+        }
+        for output in &mut draft.outputs {
+            *output = Output::new(
+                remap_index(output.item(), remap),
+                output.count(),
+                output.chance(),
+            );
+        }
+    }
+}
+
+/// Looks up `id`'s final index in `remap` (see [`ItemInterner::finish`]).
+fn remap_index(id: ItemIndex, remap: &[ItemIndex]) -> ItemIndex {
+    remap
+        .get(id.index())
+        .copied()
+        .expect("every id referenced while parsing was interned, so has an entry here")
+}
+
+/// Resolves a tag to its recursively-expanded members, as plain ids (not yet interned).
 ///
 /// Memoizes into `resolved`. Also guards against a reference cycle and reports it in `report`.
 ///
@@ -379,7 +506,7 @@ fn build_items(
 fn resolve_tag(
     id: &str,
     raw: &BTreeMap<String, Vec<String>>,
-    item_index: &BTreeMap<String, ItemIndex>,
+    registered: &BTreeSet<&str>,
     resolved: &mut BTreeMap<String, BTreeSet<String>>,
     visiting: &mut BTreeSet<String>,
     report: &mut ParseReport,
@@ -403,10 +530,10 @@ fn resolve_tag(
                 if let Some(nested) = core.strip_prefix('#') {
                     if !optional || raw.contains_key(nested) {
                         members.extend(resolve_tag(
-                            nested, raw, item_index, resolved, visiting, report,
+                            nested, raw, registered, resolved, visiting, report,
                         ));
                     }
-                } else if !optional || item_index.contains_key(core) {
+                } else if !optional || registered.contains(core) {
                     let _: bool = members.insert(core.to_owned());
                 } else {
                     // Absent, but marked optional, so silently skip.
@@ -421,15 +548,21 @@ fn resolve_tag(
     members
 }
 
-/// Resolves every tag file found in the export to its concrete (interned) members.
+/// Resolves every tag file found in the export to its members, interning each provisionally
+/// (see [`ItemInterner`]).
 ///
-/// A tag member that isn't a known item is reported in `report`.
+/// Interning tag members here, once, rather than deferring them to plain ids that a recipe
+/// would have to intern itself on every reference, is good for performance.
 ///
-/// Resolved (and interned) regardless of whether any recipe currently references it. Unused
-/// tags really aren't our business.
+/// A required (non-`?`) tag member that isn't a known registered item or fluid is reported in
+/// `report` and dropped from the result.
+///
+/// Tags resolved regardless of whether any recipe currently references it. Unused tags really
+/// aren't our business.
 fn resolve_all_tags(
     raw_tags: &BTreeMap<String, Vec<String>>,
-    item_index: &BTreeMap<String, ItemIndex>,
+    registered: &BTreeSet<&str>,
+    interner: &RefCell<ItemInterner>,
     report: &mut ParseReport,
 ) -> (Vec<String>, Vec<BTreeSet<ItemIndex>>) {
     let mut resolved = BTreeMap::new();
@@ -441,16 +574,16 @@ fn resolve_all_tags(
         let string_members = resolve_tag(
             tag_id,
             raw_tags,
-            item_index,
+            registered,
             &mut resolved,
             &mut visiting,
             report,
         );
-        let ids: BTreeSet<ItemIndex> = string_members
-            .iter()
+        let members: BTreeSet<ItemIndex> = string_members
+            .into_iter()
             .filter_map(|key| {
-                if let Some(&id) = item_index.get(key) {
-                    Some(id)
+                if registered.contains(key.as_str()) {
+                    Some(interner.borrow_mut().intern(&key))
                 } else {
                     report.fail(tag_id, format!("tag member {key:?} is not a known item"));
                     None
@@ -458,7 +591,7 @@ fn resolve_all_tags(
             })
             .collect();
         tags.push(tag_id.clone());
-        tag_members.push(ids);
+        tag_members.push(members);
     }
 
     (tags, tag_members)
@@ -473,12 +606,7 @@ fn resolve_leaves(
     for leaf in leaves {
         match leaf {
             Leaf::Item(key) => {
-                let id = resolver
-                    .item_index
-                    .get(key.as_str())
-                    .copied()
-                    .ok_or_else(|| format!("unknown item {key:?}"))?;
-                let _: bool = out.insert(id);
+                let _: bool = out.insert(resolver.interner.borrow_mut().intern(key));
             }
             Leaf::Tag(tag_id) => {
                 let members = resolver
@@ -537,13 +665,10 @@ pub fn validate_chance(raw: f32) -> Result<f32, String> {
     }
 }
 
-/// Resolves a bare output item or fluid id to its [`ItemIndex`].
-fn resolve_output_id(id: &str, resolver: &Resolver<'_>) -> Result<ItemIndex, String> {
-    resolver
-        .item_index
-        .get(id)
-        .copied()
-        .ok_or_else(|| format!("unknown output item {id:?}"))
+/// Resolves a bare output item or fluid id to its provisional [`ItemIndex`]. Never fails,
+/// see [`ItemInterner`].
+fn resolve_output_id(id: &str, resolver: &Resolver<'_>) -> ItemIndex {
+    resolver.interner.borrow_mut().intern(id)
 }
 
 /// Parses every recognized recipe file, paired with its declared `type`.
@@ -627,11 +752,19 @@ fn parse_recipes(
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::literal_string_with_formatting_args,
+    reason = "these item ids deliberately contain `{...}` NBT/circuit-configuration \
+              id_suffix suffixes, these are not format arguments"
+)]
 mod tests {
+    use core::cell::RefCell;
+    use core::iter;
     use std::collections::{BTreeMap, BTreeSet};
 
     use super::{
-        build_item_index, resolve_all_tags, tag_id_from_path, validate_chance, ParseReport,
+        ItemInterner, ParseReport, RawFile, Resolver, build_items, ingest, resolve_all_tags,
+        resolve_output_id, tag_id_from_path, validate_chance,
     };
     use crate::model::{ItemIndex, ItemKind};
 
@@ -671,10 +804,12 @@ mod tests {
     fn an_absent_optional_plain_member_is_skipped_without_a_diagnostic() {
         let raw_tags =
             BTreeMap::from([("forge:milk".to_owned(), vec!["minecraft:milk?".to_owned()])]);
-        let item_index: BTreeMap<String, ItemIndex> = BTreeMap::new();
+        let registered: BTreeSet<&str> = BTreeSet::new();
+        let interner = RefCell::new(ItemInterner::default());
         let mut report = ParseReport::default();
 
-        let (tags, tag_members) = resolve_all_tags(&raw_tags, &item_index, &mut report);
+        let (tags, tag_members) =
+            resolve_all_tags(&raw_tags, &registered, &interner, &mut report);
 
         assert_eq!(tags, vec!["forge:milk".to_owned()]);
         assert!(tag_members.first().expect("one tag").is_empty());
@@ -691,12 +826,18 @@ mod tests {
             "forge:dusts".to_owned(),
             vec!["minecraft:made_up_dust".to_owned()],
         )]);
-        let item_index: BTreeMap<String, ItemIndex> = BTreeMap::new();
+        let registered: BTreeSet<&str> = BTreeSet::new();
+        let interner = RefCell::new(ItemInterner::default());
         let mut report = ParseReport::default();
 
-        let (_tags, _tag_members) = resolve_all_tags(&raw_tags, &item_index, &mut report);
+        let (_tags, tag_members) =
+            resolve_all_tags(&raw_tags, &registered, &interner, &mut report);
 
         assert_eq!(report.diagnostics.len(), 1);
+        assert!(
+            tag_members.first().expect("one tag").is_empty(),
+            "the unresolved required member is dropped from the tag's members"
+        );
     }
 
     #[test]
@@ -705,10 +846,12 @@ mod tests {
             "forge:fuel".to_owned(),
             vec!["#forge:biodiesel?".to_owned()],
         )]);
-        let item_index: BTreeMap<String, ItemIndex> = BTreeMap::new();
+        let registered: BTreeSet<&str> = BTreeSet::new();
+        let interner = RefCell::new(ItemInterner::default());
         let mut report = ParseReport::default();
 
-        let (_tags, tag_members) = resolve_all_tags(&raw_tags, &item_index, &mut report);
+        let (_tags, tag_members) =
+            resolve_all_tags(&raw_tags, &registered, &interner, &mut report);
 
         assert!(tag_members.first().expect("one tag").is_empty());
         assert!(
@@ -720,38 +863,294 @@ mod tests {
 
     #[test]
     fn an_id_registered_as_both_an_item_and_a_fluid_is_reported() {
+        let sorted_keys = vec!["nuclearcraft:plutonium_239".to_owned()];
         let item_keys = BTreeSet::from(["nuclearcraft:plutonium_239".to_owned()]);
         let fluid_keys = BTreeSet::from(["nuclearcraft:plutonium_239".to_owned()]);
+        let referenced: BTreeSet<String> = BTreeSet::new();
         let mut report = ParseReport::default();
 
-        let (sorted_keys, item_index) = build_item_index(&item_keys, &fluid_keys, &mut report);
-
-        assert_eq!(sorted_keys.len(), 1, "the id collapses to one entry");
-        assert_eq!(
-            item_index.get("nuclearcraft:plutonium_239").copied(),
-            Some(ItemIndex::new(0))
+        let items = build_items(
+            &sorted_keys,
+            &item_keys,
+            &fluid_keys,
+            &referenced,
+            &[],
+            &mut report,
         );
-        assert_eq!(report.diagnostics.len(), 1);
-        assert!(report
-            .diagnostics
-            .first()
-            .expect("one diagnostic")
-            .message
-            .contains("both an item and a fluid"));
+
+        assert_eq!(items.len(), 1, "the id collapses to one entry");
+        assert_eq!(items.first().expect("one item").kind(), ItemKind::Fluid);
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains("both an item and a fluid"))
+        );
     }
 
     #[test]
-    fn distinct_item_and_fluid_ids_are_both_reported_as_two_entries_without_warning() {
+    fn distinct_item_and_fluid_ids_are_reported_as_two_entries_without_a_collision_warning() {
+        let sorted_keys = vec![
+            "minecraft:iron_ingot".to_owned(),
+            "minecraft:water".to_owned(),
+        ];
         let item_keys = BTreeSet::from(["minecraft:iron_ingot".to_owned()]);
         let fluid_keys = BTreeSet::from(["minecraft:water".to_owned()]);
+        let referenced: BTreeSet<String> = sorted_keys.iter().cloned().collect();
         let mut report = ParseReport::default();
 
-        let (sorted_keys, _item_index) =
-            build_item_index(&item_keys, &fluid_keys, &mut report);
+        let items = build_items(
+            &sorted_keys,
+            &item_keys,
+            &fluid_keys,
+            &referenced,
+            &[],
+            &mut report,
+        );
 
-        assert_eq!(sorted_keys.len(), 2);
+        assert_eq!(items.len(), 2);
         assert!(report.diagnostics.is_empty());
-        assert!(sorted_keys.contains(&("minecraft:iron_ingot".to_owned(), ItemKind::Item)));
-        assert!(sorted_keys.contains(&("minecraft:water".to_owned(), ItemKind::Fluid)));
+        assert_eq!(items.first().expect("two items").kind(), ItemKind::Item);
+        assert_eq!(items.get(1).expect("two items").kind(), ItemKind::Fluid);
+    }
+
+    #[test]
+    fn a_registered_but_unreferenced_id_is_collected_separately_from_diagnostics() {
+        let sorted_keys = vec!["minecraft:dirt".to_owned()];
+        let item_keys = BTreeSet::from(["minecraft:dirt".to_owned()]);
+        let fluid_keys: BTreeSet<String> = BTreeSet::new();
+        let referenced: BTreeSet<String> = BTreeSet::new();
+        let mut report = ParseReport::default();
+
+        let items = build_items(
+            &sorted_keys,
+            &item_keys,
+            &fluid_keys,
+            &referenced,
+            &[],
+            &mut report,
+        );
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(
+            report.registered_but_unreferenced,
+            vec!["minecraft:dirt".to_owned()]
+        );
+        assert!(
+            report.diagnostics.is_empty(),
+            "unreferenced isn't a Diagnostic-worthy problem, just a fact: {:?}",
+            report.diagnostics
+        );
+    }
+
+    #[test]
+    fn a_referenced_but_unregistered_non_synthetic_id_is_reported_as_unknown() {
+        let sorted_keys = vec!["minecraft:made_up_item".to_owned()];
+        let item_keys: BTreeSet<String> = BTreeSet::new();
+        let fluid_keys: BTreeSet<String> = BTreeSet::new();
+        let referenced: BTreeSet<String> = sorted_keys.iter().cloned().collect();
+        let mut report = ParseReport::default();
+
+        let items = build_items(
+            &sorted_keys,
+            &item_keys,
+            &fluid_keys,
+            &referenced,
+            &[],
+            &mut report,
+        );
+
+        assert_eq!(items.len(), 1, "it still gets an entry, just a flagged one");
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic
+                .message
+                .contains("not a registered item or fluid")
+        }));
+    }
+
+    #[test]
+    fn a_referenced_synthetic_id_is_not_reported_as_unknown() {
+        let sorted_keys = vec!["gtceu:programmed_circuit{configuration:1}".to_owned()];
+        let item_keys: BTreeSet<String> = BTreeSet::new();
+        let fluid_keys: BTreeSet<String> = BTreeSet::new();
+        let referenced: BTreeSet<String> = sorted_keys.iter().cloned().collect();
+        let mut report = ParseReport::default();
+
+        let items = build_items(
+            &sorted_keys,
+            &item_keys,
+            &fluid_keys,
+            &referenced,
+            &[],
+            &mut report,
+        );
+
+        assert_eq!(items.len(), 1);
+        assert!(
+            report.diagnostics.is_empty(),
+            "a `{{`-shaped id is assumed synthetic, not unknown: {:?}",
+            report.diagnostics
+        );
+    }
+
+    #[test]
+    fn item_interner_assigns_final_indices_in_sorted_order_regardless_of_discovery_order() {
+        let mut interner = ItemInterner::default();
+
+        // Discovered in this order, but "a_first" sorts before "z_last".
+        let z_last_provisional = interner.intern("z_last");
+        let a_first_provisional = interner.intern("a_first");
+        assert_eq!(z_last_provisional, ItemIndex::new(0), "first discovered");
+        assert_eq!(a_first_provisional, ItemIndex::new(1));
+        assert_eq!(
+            interner.intern("z_last"),
+            z_last_provisional,
+            "interning again is stable"
+        );
+
+        let (sorted_keys, remap) = interner.finish(iter::empty());
+
+        assert_eq!(sorted_keys, vec!["a_first".to_owned(), "z_last".to_owned()]);
+        // "z_last"'s provisional index was 0.
+        assert_eq!(
+            remap.first().copied(),
+            Some(ItemIndex::new(1)),
+            "z_last sorts second, so index 1"
+        );
+        // "a_first"'s provisional index was 1.
+        assert_eq!(
+            remap.get(1).copied(),
+            Some(ItemIndex::new(0)),
+            "a_first sorts first, so index 0"
+        );
+    }
+
+    #[test]
+    fn item_interner_finish_includes_a_registered_but_unreferenced_id() {
+        let mut interner = ItemInterner::default();
+        let _provisional = interner.intern("minecraft:referenced");
+
+        let (sorted_keys, _remap) =
+            interner.finish(iter::once("minecraft:unreferenced".to_owned()));
+
+        assert_eq!(
+            sorted_keys,
+            vec![
+                "minecraft:referenced".to_owned(),
+                "minecraft:unreferenced".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn resolve_output_id_interns_any_string_unconditionally() {
+        let tag_index: BTreeMap<String, u32> = BTreeMap::new();
+        let tag_members: BTreeMap<String, &BTreeSet<ItemIndex>> = BTreeMap::new();
+        let interner = RefCell::new(ItemInterner::default());
+        let resolver = Resolver {
+            tag_index: &tag_index,
+            tag_members: &tag_members,
+            interner: &interner,
+        };
+
+        let first = resolve_output_id("gtceu:programmed_circuit{configuration:1}", &resolver);
+        let second = resolve_output_id("gtceu:programmed_circuit{configuration:1}", &resolver);
+        assert_eq!(first, second, "interning the same key is stable");
+
+        let unrelated = resolve_output_id("minecraft:made_up_item", &resolver);
+        assert_ne!(
+            unrelated, first,
+            "a different key gets a different (still provisional) index -- resolution never \
+             fails here, whether or not the key is a known registered id"
+        );
+    }
+
+    /// The property that makes this design correct: a recipe that only references real,
+    /// registered items keeps the exact same final item ordering (alphabetical, across
+    /// everything referenced or registered) regardless of what else a *different* recipe in
+    /// the same export happens to reference, synthetic or not.
+    #[test]
+    fn real_items_sort_correctly_alongside_a_synthetic_id_discovered_elsewhere() {
+        let files = [
+            RawFile {
+                path: "registries/item.json".to_owned(),
+                bytes: br#"{"minecraft:dirt": "c", "minecraft:zombie_head": "c"}"#.to_vec(),
+            },
+            RawFile {
+                path: "registries/fluid.json".to_owned(),
+                bytes: b"{}".to_vec(),
+            },
+            RawFile {
+                path: "recipes/gtceu/macerator/nbt_tool.json".to_owned(),
+                bytes: br#"{
+                    "type": "gtceu:macerator",
+                    "duration": 100,
+                    "tickInputs": {"eu_per_tick": [{"content": 8}]},
+                    "inputs": {"item": [
+                        {"content": {"type": "gtceu:sized", "count": 1, "ingredient": {
+                            "type": "forge:nbt",
+                            "item": "minecraft:egg",
+                            "count": 1,
+                            "nbt": "{CustomData:1}"
+                        }}}
+                    ]},
+                    "outputs": {}
+                }"#
+                .to_vec(),
+            },
+            RawFile {
+                path: "recipes/minecraft/zombie_head_from_dirt.json".to_owned(),
+                bytes: br#"{
+                    "type": "minecraft:crafting_shapeless",
+                    "ingredients": [{"item": "minecraft:dirt"}],
+                    "result": {"item": "minecraft:zombie_head"}
+                }"#
+                .to_vec(),
+            },
+        ];
+
+        let (graph, report) = ingest(&files);
+
+        assert!(
+            report.diagnostics.is_empty(),
+            "unexpected diagnostics: {:?}",
+            report.diagnostics
+        );
+
+        // "minecraft:dirt" < "minecraft:egg{CustomData:1}" < "minecraft:zombie_head": the
+        // synthetic id sorts *between* the two real ones, alphabetically.
+        let item_ids: Vec<&str> = graph.items().iter().map(super::Item::id).collect();
+        assert_eq!(
+            item_ids,
+            vec![
+                "minecraft:dirt",
+                "minecraft:egg{CustomData:1}",
+                "minecraft:zombie_head",
+            ],
+        );
+
+        let shapeless = graph
+            .recipes()
+            .iter()
+            .find(|recipe| recipe.id() == "minecraft:zombie_head_from_dirt")
+            .expect("the crafting_shapeless recipe ingested");
+        let output = shapeless.outputs().first().expect("one output");
+        assert_eq!(
+            output.item(),
+            ItemIndex::new(2),
+            "minecraft:zombie_head sorts last overall, once the synthetic id is in the mix"
+        );
+
+        let macerator = graph
+            .recipes()
+            .iter()
+            .find(|recipe| recipe.id() == "gtceu:macerator/nbt_tool")
+            .expect("the macerator recipe ingested");
+        let input = macerator.inputs().first().expect("one input");
+        assert_eq!(
+            input.members().iter().next().copied(),
+            Some(ItemIndex::new(1)),
+            "the NBT-folded synthetic id resolves to its final, correctly-sorted index"
+        );
     }
 }

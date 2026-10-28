@@ -9,7 +9,7 @@
 //! authors may then want to remove those recipes, and instead supply one of their own (in the
 //! case of omnium: "take all possible elements and turn them into X omnium nuggets").
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use serde::Deserialize;
@@ -18,7 +18,7 @@ use toml::de::Error as TomlError;
 
 use super::ingredient::Leaf;
 use super::path::Path;
-use super::{resolve_leaves, resolve_output_id, slot_tag, RecipeDraft, Resolver};
+use super::{RecipeDraft, Resolver, resolve_leaves, resolve_output_id, slot_tag};
 use crate::model::{Output, Slot};
 
 /// This crate's built-in shapes, as TOML text embedded at compile time.
@@ -471,60 +471,6 @@ fn fold_id_suffix(base_id: String, id_suffix: Option<&IdSuffix>, node: &Value) -
     }
 }
 
-/// Walks `value` recursively, adding every synthetic item id it finds to `out`.
-///
-/// Synthetic ids only exist because some recipe shape aded them as an [`IdSuffix`], so they
-/// don't actually appear in `registries/item.json`.
-/// Synthetic ids can't collide with real registered ids, because synthetic ones contain
-/// `{...}`, and the curly braces aren't valid characters in an identifier.
-///
-/// A plain structural walk, not driven by any one shape's slot paths. These can appear
-/// anywhere a recipe nests an ingredient, and walking generically is simpler and more robust
-/// than keeping a second copy of every shape that happens to use circuits or NBT in sync with
-/// this. TODO: Is that true? Is that really more robust?
-///
-/// # Panics
-///
-/// Never, unless this crate has a bug. The Id Suffix formats here must exactly match
-/// [`fold_id_suffix`]'s, which should be checked by this module's own tests.
-pub(super) fn collect_synthetic_item_keys(value: &Value, out: &mut BTreeSet<String>) {
-    match value {
-        Value::Object(map) => {
-            if let Some(id) = synthetic_id_of(map) {
-                let _: bool = out.insert(id);
-            }
-            for nested in map.values() {
-                collect_synthetic_item_keys(nested, out);
-            }
-        }
-        Value::Array(entries) => {
-            for nested in entries {
-                collect_synthetic_item_keys(nested, out);
-            }
-        }
-        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
-    }
-}
-
-/// The synthetic id that `map` would resolve to, if it's a `gtceu:circuit` configuration slot
-/// or an NBT-tagged ingredient. `None` for everything else, including a plain item or tag.
-fn synthetic_id_of(map: &serde_json::Map<String, Value>) -> Option<String> {
-    match map.get("type").and_then(Value::as_str) {
-        Some("gtceu:circuit") => {
-            let configuration = map.get("configuration").and_then(Value::as_u64)?;
-            Some(format!(
-                "gtceu:programmed_circuit{{configuration:{configuration}}}"
-            ))
-        }
-        Some("forge:nbt" | "forge:partial_nbt") => {
-            let item = map.get("item").and_then(Value::as_str)?;
-            let nbt = map.get("nbt").and_then(Value::as_str)?;
-            Some(format!("{item}{nbt}"))
-        }
-        _ => None,
-    }
-}
-
 /// Reads `path`'s value on `node` as a count, defaulting to 1 when `path` is absent or doesn't
 /// resolve.
 ///
@@ -637,7 +583,7 @@ fn extract_output_slots(
         let Leaf::Item(id) = leaf else {
             return Err("an output resolved to a tag, not a concrete item".to_owned());
         };
-        let item = resolve_output_id(&id, resolver)?;
+        let item = resolve_output_id(&id, resolver);
         let count = resolve_count(spec.count.as_ref(), entry)?;
         let chance = resolve_chance(spec.chance.as_ref(), entry)?;
         outputs.push(Output::new(item, count, chance));
@@ -689,12 +635,13 @@ pub(super) fn apply(
               these are not format arguments"
 )]
 mod tests {
+    use core::cell::RefCell;
     use std::collections::{BTreeMap, BTreeSet};
 
     use serde_json::json;
 
     use super::Shapes;
-    use crate::ingest::Resolver;
+    use crate::ingest::{ItemInterner, Resolver};
     use crate::model::ItemIndex;
 
     #[test]
@@ -702,20 +649,21 @@ mod tests {
         let _: &Shapes = Shapes::builtin();
     }
 
-    fn item_only_resolver(
-        keys: &[&str],
-    ) -> (BTreeMap<String, ItemIndex>, BTreeMap<String, u32>) {
-        let item_index = keys
-            .iter()
-            .enumerate()
-            .map(|(index, &key)| {
-                (
-                    key.to_owned(),
-                    ItemIndex::new(u32::try_from(index).expect("fits")),
-                )
-            })
-            .collect();
-        (item_index, BTreeMap::new())
+    /// An empty-tags resolver, backed by a fresh [`ItemInterner`].
+    #[expect(
+        clippy::type_complexity,
+        reason = "test-only helper tuple, a type alias would just move the complexity"
+    )]
+    fn plain_resolver() -> (
+        RefCell<ItemInterner>,
+        BTreeMap<String, u32>,
+        BTreeMap<String, &'static BTreeSet<ItemIndex>>,
+    ) {
+        (
+            RefCell::new(ItemInterner::default()),
+            BTreeMap::new(),
+            BTreeMap::new(),
+        )
     }
 
     /// `gtceu:macerator`, the real `macerate_hv_stainless_steel_buzzsaw` shape minus the
@@ -727,13 +675,11 @@ mod tests {
             .shape_for("gtceu:macerator")
             .expect("gtceu:macerator is recipe_to_shape'ed to a shape");
 
-        let (item_index, tag_index) =
-            item_only_resolver(&["gtceu:iron_ore", "gtceu:iron_dust", "gtceu:stone_dust"]);
-        let tag_members = BTreeMap::new();
+        let (interner, tag_index, tag_members) = plain_resolver();
         let resolver = Resolver {
-            item_index: &item_index,
             tag_index: &tag_index,
             tag_members: &tag_members,
+            interner: &interner,
         };
 
         let value = json!({
@@ -778,7 +724,8 @@ mod tests {
     /// configuration slot.
     ///
     /// This tests that catalysts fall out of `chance == 0` automatically and that
-    /// `gtceu:circuit` resolves to a real item `gtceu:programmed_circuit`.
+    /// `gtceu:circuit` resolves to the same item as `gtceu:programmed_circuit` but
+    /// suffixed by its configuration.
     #[test]
     fn gtceu_machine_shape_reads_circuits_and_fluids() {
         let shapes = Shapes::builtin();
@@ -786,17 +733,11 @@ mod tests {
             .shape_for("gtceu:distillery")
             .expect("gtceu:distillery is recipe_to_shape'ed to a shape");
 
-        let (item_index, tag_index) = item_only_resolver(&[
-            "gtceu:gallium_sulfide_dust",
-            "gtceu:naquadria_waste",
-            "gtceu:programmed_circuit{configuration:1}",
-            "gtceu:sulfuric_acid",
-        ]);
-        let tag_members = BTreeMap::new();
+        let (interner, tag_index, tag_members) = plain_resolver();
         let resolver = Resolver {
-            item_index: &item_index,
             tag_index: &tag_index,
             tag_members: &tag_members,
+            interner: &interner,
         };
 
         let value = json!({
@@ -835,11 +776,12 @@ mod tests {
             (circuit_slot.chance() - 0.0).abs() < f32::EPSILON,
             "chance 0 makes the circuit a catalyst"
         );
+        let expected_circuit = interner
+            .borrow_mut()
+            .intern("gtceu:programmed_circuit{configuration:1}");
         assert_eq!(
             circuit_slot.members().iter().next().copied(),
-            item_index
-                .get("gtceu:programmed_circuit{configuration:1}")
-                .copied(),
+            Some(expected_circuit),
             "circuit configuration 1 resolves to the real item, suffixed"
         );
 
@@ -854,13 +796,11 @@ mod tests {
             .shape_for("gtceu:macerator")
             .expect("gtceu:macerator is recipe_to_shape'ed to a shape");
 
-        let (item_index, tag_index) =
-            item_only_resolver(&["gtceu:hv_stainless_steel_buzzsaw{Damage:0,GT.Tool:{}}"]);
-        let tag_members = BTreeMap::new();
+        let (interner, tag_index, tag_members) = plain_resolver();
         let resolver = Resolver {
-            item_index: &item_index,
             tag_index: &tag_index,
             tag_members: &tag_members,
+            interner: &interner,
         };
 
         let value = json!({
@@ -885,12 +825,10 @@ mod tests {
 
         assert_eq!(draft.inputs.len(), 1);
         let input_slot = draft.inputs.first().expect("one input");
-        assert_eq!(
-            input_slot.members().iter().next().copied(),
-            item_index
-                .get("gtceu:hv_stainless_steel_buzzsaw{Damage:0,GT.Tool:{}}")
-                .copied()
-        );
+        let expected = interner
+            .borrow_mut()
+            .intern("gtceu:hv_stainless_steel_buzzsaw{Damage:0,GT.Tool:{}}");
+        assert_eq!(input_slot.members().iter().next().copied(), Some(expected));
     }
 
     /// A tag reference, with no `count` or `chance` fields at all, so defaults are applied.
@@ -901,18 +839,16 @@ mod tests {
             .shape_for("gtceu:arc_furnace")
             .expect("gtceu:arc_furnace is recipe_to_shape'ed to a shape");
 
-        let (item_index, empty_tag_index) = item_only_resolver(&["gtceu:rose_gold_ingot"]);
         let tag_set: BTreeSet<ItemIndex> = BTreeSet::new();
         let tag_members: BTreeMap<String, &BTreeSet<ItemIndex>> =
             BTreeMap::from([("forge:double_plates/rose_gold".to_owned(), &tag_set)]);
-        let tag_index: BTreeMap<String, u32> = empty_tag_index
-            .into_iter()
-            .chain([("forge:double_plates/rose_gold".to_owned(), 0)])
-            .collect();
+        let tag_index: BTreeMap<String, u32> =
+            BTreeMap::from([("forge:double_plates/rose_gold".to_owned(), 0)]);
+        let interner = RefCell::new(ItemInterner::default());
         let resolver = Resolver {
-            item_index: &item_index,
             tag_index: &tag_index,
             tag_members: &tag_members,
+            interner: &interner,
         };
 
         let value = json!({
