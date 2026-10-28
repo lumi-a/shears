@@ -112,7 +112,7 @@ pub fn ingest(files: &[RawFile]) -> (Graph, ParseReport) {
 
     let (mut item_keys, fluid_keys, raw_tags) = read_registries_and_tags(files, &mut report);
     item_keys.extend(discover_synthetic_item_keys(files));
-    let (sorted_keys, item_index) = build_item_index(&item_keys, &fluid_keys);
+    let (sorted_keys, item_index) = build_item_index(&item_keys, &fluid_keys, &mut report);
     let (tags, tag_members_by_id) = resolve_all_tags(&raw_tags, &item_index, &mut report);
     let tag_index: BTreeMap<String, u32> = tags
         .iter()
@@ -180,9 +180,6 @@ pub fn ingest(files: &[RawFile]) -> (Graph, ParseReport) {
 /// distinguish "an item tag" from "a fluid tag".
 ///
 /// TODO: Should we distinguish the two, for sake of performance?
-///
-/// TODO: Do we check that a fluid and an item never have the same id? I mean surely that'd
-/// never happen in minecraft, but to be safe?
 fn read_registries_and_tags(
     files: &[RawFile],
     report: &mut ParseReport,
@@ -299,9 +296,18 @@ fn discover_synthetic_item_keys(files: &[RawFile]) -> BTreeSet<String> {
 /// Builds the sorted item/fluid list and its key-to-id lookup.
 ///
 /// Doesn't depend on recipes or tags.
+///
+/// An id that's registered as both an item and a fluid (e.g. some Nuclearcraft Neoteric salts)
+/// silently collapses to just the fluid today. This is reported in `report` at least.
+///
+/// TODO: To avoid this, separate registries would be necessary. Perhaps we should separate
+/// Items into a vector (yes, execution-time, because I don't trust that mods won't do custom
+/// registry stuff), i.e. one entry of this vector holds all the item-indices, ne holds all the
+/// fluid-indices, the next holds maybe another-registry's indices.
 fn build_item_index(
     item_keys: &BTreeSet<String>,
     fluid_keys: &BTreeSet<String>,
+    report: &mut ParseReport,
 ) -> (Vec<(String, ItemKind)>, BTreeMap<String, ItemIndex>) {
     let mut all_keys: BTreeMap<String, ItemKind> = item_keys
         .iter()
@@ -309,6 +315,12 @@ fn build_item_index(
         .map(|key| (key, ItemKind::Item))
         .collect();
     for key in fluid_keys {
+        if all_keys.contains_key(key) {
+            report.fail(
+                key,
+                "registered as both an item and a fluid, only the fluid will be kept",
+            );
+        }
         let _: Option<ItemKind> = all_keys.insert(key.clone(), ItemKind::Fluid);
     }
     let sorted_keys: Vec<(String, ItemKind)> = all_keys.into_iter().collect();
@@ -616,10 +628,12 @@ fn parse_recipes(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
 
-    use super::{resolve_all_tags, tag_id_from_path, validate_chance, ParseReport};
-    use crate::model::ItemIndex;
+    use super::{
+        ParseReport, build_item_index, resolve_all_tags, tag_id_from_path, validate_chance,
+    };
+    use crate::model::{ItemIndex, ItemKind};
 
     #[test]
     fn values_inside_the_range_pass_through_unchanged() {
@@ -702,5 +716,44 @@ mod tests {
             "an absent optional nested tag shouldn't be reported: {:?}",
             report.diagnostics
         );
+    }
+
+    #[test]
+    fn an_id_registered_as_both_an_item_and_a_fluid_is_reported() {
+        let item_keys = BTreeSet::from(["nuclearcraft:plutonium_239".to_owned()]);
+        let fluid_keys = BTreeSet::from(["nuclearcraft:plutonium_239".to_owned()]);
+        let mut report = ParseReport::default();
+
+        let (sorted_keys, item_index) = build_item_index(&item_keys, &fluid_keys, &mut report);
+
+        assert_eq!(sorted_keys.len(), 1, "the id collapses to one entry");
+        assert_eq!(
+            item_index.get("nuclearcraft:plutonium_239").copied(),
+            Some(ItemIndex::new(0))
+        );
+        assert_eq!(report.diagnostics.len(), 1);
+        assert!(
+            report
+                .diagnostics
+                .first()
+                .expect("one diagnostic")
+                .message
+                .contains("both an item and a fluid")
+        );
+    }
+
+    #[test]
+    fn distinct_item_and_fluid_ids_are_both_reported_as_two_entries_without_warning() {
+        let item_keys = BTreeSet::from(["minecraft:iron_ingot".to_owned()]);
+        let fluid_keys = BTreeSet::from(["minecraft:water".to_owned()]);
+        let mut report = ParseReport::default();
+
+        let (sorted_keys, _item_index) =
+            build_item_index(&item_keys, &fluid_keys, &mut report);
+
+        assert_eq!(sorted_keys.len(), 2);
+        assert!(report.diagnostics.is_empty());
+        assert!(sorted_keys.contains(&("minecraft:iron_ingot".to_owned(), ItemKind::Item)));
+        assert!(sorted_keys.contains(&("minecraft:water".to_owned(), ItemKind::Fluid)));
     }
 }
