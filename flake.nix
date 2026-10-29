@@ -34,7 +34,32 @@
           nightlyRustfmt
           toolchain
           pkgs.rust-analyzer
+          pkgs.samply
+          pkgs.libcap
         ];
+
+        # The `samply` profiler needs CAP_PERFMON to call perf_event_open(), which
+        # `kernel.perf_event_paranoid` (2 by default) denies to unprivileged users.
+        # Rather than lowering that sysctl system-wide (which would affect every
+        # process, not just this, and cause sidechannel insecurity risks or something),
+        # we instead copy `samply` into a project-local, gitignored path and grant
+        # the capability to only this one specific copy.
+        # Will have to re-copy and re-approve if the nixpkgs pin changes `samply`'s
+        # store path, oh well.
+        shellHook = ''
+          mkdir -p .samply-wrapped
+          current_source="$(readlink -f ${pkgs.samply}/bin/samply)"
+          cached_source="$(cat .samply-wrapped/.source 2>/dev/null || true)"
+          if [ "$current_source" != "$cached_source" ]; then
+            cp "$current_source" .samply-wrapped/samply
+            echo "$current_source" > .samply-wrapped/.source
+          fi
+          if ! getcap .samply-wrapped/samply 2>/dev/null | grep -q cap_perfmon; then
+            echo "Gotta grant cap_perfmon to .samply-wrapped/samply, needs sudo once."
+            sudo setcap cap_perfmon+ep .samply-wrapped/samply
+          fi
+          export PATH="$PWD/.samply-wrapped:$PATH"
+        '';
       };
     };
 }
