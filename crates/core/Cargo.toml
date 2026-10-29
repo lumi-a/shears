@@ -30,6 +30,7 @@ walkdir = { version = "2", optional = true }
 
 [dev-dependencies]
 proptest = "1"
+sha2 = "0.10"
 shears-core = { path = ".", features = ["fs"] }
 tar = "0.4"
 tempfile = "3"
