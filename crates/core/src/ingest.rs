@@ -631,7 +631,7 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use super::{
-        ParseReport, build_item_index, resolve_all_tags, tag_id_from_path, validate_chance,
+        build_item_index, resolve_all_tags, tag_id_from_path, validate_chance, ParseReport,
     };
     use crate::model::{ItemIndex, ItemKind};
 
@@ -732,14 +732,12 @@ mod tests {
             Some(ItemIndex::new(0))
         );
         assert_eq!(report.diagnostics.len(), 1);
-        assert!(
-            report
-                .diagnostics
-                .first()
-                .expect("one diagnostic")
-                .message
-                .contains("both an item and a fluid")
-        );
+        assert!(report
+            .diagnostics
+            .first()
+            .expect("one diagnostic")
+            .message
+            .contains("both an item and a fluid"));
     }
 
     #[test]
