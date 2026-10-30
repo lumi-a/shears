@@ -423,11 +423,27 @@ fn build_items(
         .cloned()
         .collect();
 
+    // This used to be really costly, we used to scan over every tag (O(item*tags)) for every
+    // item, which profiling showed was the largest time sink of ingest. Instead, we iterate
+    // over all tags once and track their members in a set.
+    let mut tags_by_item: Vec<BTreeSet<u32>> = vec![BTreeSet::new(); sorted_keys.len()];
+    for (tag_index, members) in tag_members.iter().enumerate() {
+        let tag_index_u32 = u32::try_from(tag_index).expect(
+            "fewer than u32::MAX tags. Please open an issue if this is a problem for you.",
+        );
+        for &member in members {
+            let tags = tags_by_item.get_mut(member.index()).expect(
+                "every tag member index is within sorted_keys' bounds, having already been \
+                 remapped to its final index",
+            );
+            let _: bool = tags.insert(tag_index_u32);
+        }
+    }
+
     sorted_keys
         .iter()
-        .enumerate()
-        .map(|(index, key)| {
-            let id = ItemIndex::new(u32::try_from(index).expect("fewer than u32::MAX items in one export. Please open an issue if this is a problem for you."));
+        .zip(tags_by_item)
+        .map(|(key, item_tags)| {
             let is_item = item_keys.contains(key);
             let is_fluid = fluid_keys.contains(key);
             let kind = if is_item && is_fluid {
@@ -442,16 +458,13 @@ fn build_items(
                 ItemKind::Item
             } else {
                 if !key.contains('{') {
-                    report.fail(key, "referenced by a recipe, but not a registered item or fluid");
+                    report.fail(
+                        key,
+                        "referenced by a recipe, but not a registered item or fluid",
+                    );
                 }
                 ItemKind::Item
             };
-            let item_tags: BTreeSet<u32> = tag_members
-                .iter()
-                .enumerate()
-                .filter(|&(_, members)| members.contains(&id))
-                .map(|(tag_index, _)| u32::try_from(tag_index).expect("fewer than u32::MAX tags. Please open an issue if this is a problem for you."))
-                .collect();
             Item::new(key.clone(), kind, item_tags)
         })
         .collect()
