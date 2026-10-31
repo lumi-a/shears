@@ -399,8 +399,7 @@ fn recipe_id_from_path(path: &str) -> Option<String> {
 /// Builds the final `Item` list, in `sorted_keys`' order.
 ///
 /// Classifies each key by checking `item_keys`/`fluid_keys`.
-/// - Both means a registered item/fluid collision. This is reported, and the fluid wins.
-///   (TODO: Should the item not win? Feels like it would cause slightly fewer problems.)
+/// - Both means a registered item/fluid collision. This is reported, and the item wins.
 /// - Neither means the key was only ever *referenced*, never registered. Either a synthetic
 ///   id, or an unknown-to-the-registers item, in which case it's reported.
 /// - Also collects every registered id that's in neither `referenced` into
@@ -449,9 +448,9 @@ fn build_items(
             let kind = if is_item && is_fluid {
                 report.fail(
                     key,
-                    "registered as both an item and a fluid, only the fluid will be kept",
+                    "registered as both an item and a fluid, only the item will be kept",
                 );
-                ItemKind::Fluid
+                ItemKind::Item
             } else if is_fluid {
                 ItemKind::Fluid
             } else if is_item {
@@ -890,7 +889,7 @@ mod tests {
         );
 
         assert_eq!(items.len(), 1, "the id collapses to one entry");
-        assert_eq!(items.first().expect("one item").kind(), ItemKind::Fluid);
+        assert_eq!(items.first().expect("one item").kind(), ItemKind::Item);
         assert!(report
             .diagnostics
             .iter()
