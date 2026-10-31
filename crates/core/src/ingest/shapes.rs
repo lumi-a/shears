@@ -641,29 +641,12 @@ mod tests {
     use serde_json::json;
 
     use super::Shapes;
-    use crate::ingest::{ItemInterner, Resolver};
+    use crate::ingest::{ItemInterner, PlainResolverParts, Resolver};
     use crate::model::ItemIndex;
 
     #[test]
     fn builtin_shapes_parse_without_error() {
         let _: &Shapes = Shapes::builtin();
-    }
-
-    /// An empty-tags resolver, backed by a fresh [`ItemInterner`].
-    #[expect(
-        clippy::type_complexity,
-        reason = "test-only helper tuple, a type alias would just move the complexity"
-    )]
-    fn plain_resolver() -> (
-        RefCell<ItemInterner>,
-        BTreeMap<String, u32>,
-        BTreeMap<String, &'static BTreeSet<ItemIndex>>,
-    ) {
-        (
-            RefCell::new(ItemInterner::default()),
-            BTreeMap::new(),
-            BTreeMap::new(),
-        )
     }
 
     /// `gtceu:macerator`, the real `macerate_hv_stainless_steel_buzzsaw` shape minus the
@@ -675,12 +658,8 @@ mod tests {
             .shape_for("gtceu:macerator")
             .expect("gtceu:macerator is recipe_to_shape'ed to a shape");
 
-        let (interner, tag_index, tag_members) = plain_resolver();
-        let resolver = Resolver {
-            tag_index: &tag_index,
-            tag_members: &tag_members,
-            interner: &interner,
-        };
+        let parts = PlainResolverParts::default();
+        let resolver = parts.resolver();
 
         let value = json!({
             "type": "gtceu:macerator",
@@ -733,12 +712,8 @@ mod tests {
             .shape_for("gtceu:distillery")
             .expect("gtceu:distillery is recipe_to_shape'ed to a shape");
 
-        let (interner, tag_index, tag_members) = plain_resolver();
-        let resolver = Resolver {
-            tag_index: &tag_index,
-            tag_members: &tag_members,
-            interner: &interner,
-        };
+        let parts = PlainResolverParts::default();
+        let resolver = parts.resolver();
 
         let value = json!({
             "type": "gtceu:distillery",
@@ -776,7 +751,8 @@ mod tests {
             (circuit_slot.chance() - 0.0).abs() < f32::EPSILON,
             "chance 0 makes the circuit a catalyst"
         );
-        let expected_circuit = interner
+        let expected_circuit = parts
+            .interner
             .borrow_mut()
             .intern("gtceu:programmed_circuit{configuration:1}");
         assert_eq!(
@@ -796,12 +772,8 @@ mod tests {
             .shape_for("gtceu:macerator")
             .expect("gtceu:macerator is recipe_to_shape'ed to a shape");
 
-        let (interner, tag_index, tag_members) = plain_resolver();
-        let resolver = Resolver {
-            tag_index: &tag_index,
-            tag_members: &tag_members,
-            interner: &interner,
-        };
+        let parts = PlainResolverParts::default();
+        let resolver = parts.resolver();
 
         let value = json!({
             "type": "gtceu:macerator",
@@ -825,7 +797,8 @@ mod tests {
 
         assert_eq!(draft.inputs.len(), 1);
         let input_slot = draft.inputs.first().expect("one input");
-        let expected = interner
+        let expected = parts
+            .interner
             .borrow_mut()
             .intern("gtceu:hv_stainless_steel_buzzsaw{Damage:0,GT.Tool:{}}");
         assert_eq!(input_slot.members().iter().next().copied(), Some(expected));
@@ -845,10 +818,14 @@ mod tests {
         let tag_index: BTreeMap<String, u32> =
             BTreeMap::from([("forge:double_plates/rose_gold".to_owned(), 0)]);
         let interner = RefCell::new(ItemInterner::default());
+        let direct_refs = RefCell::new(BTreeSet::new());
+        let used_tags = RefCell::new(BTreeSet::new());
         let resolver = Resolver {
             tag_index: &tag_index,
             tag_members: &tag_members,
             interner: &interner,
+            direct_refs: &direct_refs,
+            used_tags: &used_tags,
         };
 
         let value = json!({

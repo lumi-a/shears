@@ -99,6 +99,11 @@ struct Resolver<'a> {
     /// Every item/fluid id seen so far, interned as it's first referenced. See
     /// [`ItemInterner`].
     interner: &'a RefCell<ItemInterner>,
+    /// Ids directly named by some recipe's input leaf or output, as opposed to tag's members.
+    /// See `used_tags` for that instead.
+    direct_refs: &'a RefCell<BTreeSet<ItemIndex>>,
+    /// Index into [`Graph::tags`], for each tag used by some recipe's input leaf.
+    used_tags: &'a RefCell<BTreeSet<u32>>,
 }
 
 /// Interns every item/fluid id referenced while parsing a recipe (directly, or via a tag's
@@ -229,16 +234,26 @@ pub fn ingest(files: &[RawFile]) -> (Graph, ParseReport) {
         .zip(provisional_tag_members.iter())
         .collect();
 
+    let direct_refs_cell: RefCell<BTreeSet<ItemIndex>> = RefCell::new(BTreeSet::new());
+    let used_tags_cell: RefCell<BTreeSet<u32>> = RefCell::new(BTreeSet::new());
     let resolver = Resolver {
         tag_index: &tag_index,
         tag_members: &tag_members,
         interner: &interner_cell,
+        direct_refs: &direct_refs_cell,
+        used_tags: &used_tags_cell,
     };
     let mut recipe_drafts = parse_recipes(files, &resolver, &mut report);
     recipe_drafts.sort_unstable_by(|(_, a), (_, b)| a.id.cmp(&b.id));
 
     let interner = interner_cell.into_inner();
-    let referenced: BTreeSet<String> = interner.by_key.keys().cloned().collect();
+    let referenced = resolve_referenced(
+        &interner,
+        direct_refs_cell.into_inner(),
+        used_tags_cell.into_inner(),
+        &provisional_tag_members,
+    );
+
     let (sorted_keys, remap) =
         interner.finish(item_keys.iter().chain(fluid_keys.iter()).cloned());
     remap_item_indices(&mut recipe_drafts, &remap);
@@ -404,8 +419,8 @@ fn recipe_id_from_path(path: &str) -> Option<String> {
 ///   id, or an unknown-to-the-registers item, in which case it's reported.
 /// - Also collects every registered id that's in neither `referenced` into
 ///   [`ParseReport::registered_but_unreferenced`]. These are items or fluids that no recipe
-///   ever mentions. (TODO: Should probably not count tags as direct references, unless the tag
-///   is actually referenced somewhere)
+///   ever mentions, either directly or via a tag that some recipe actually uses. If a tag is
+///   used in some recipe, then all members of that tag count as referenced.
 fn build_items(
     sorted_keys: &[String],
     item_keys: &BTreeSet<String>,
@@ -563,7 +578,7 @@ fn resolve_tag(
 /// Resolves every tag file found in the export to its members, interning each provisionally
 /// (see [`ItemInterner`]).
 ///
-/// Interning tag members here, once, rather than deferring them to plain ids that a recipe
+/// Interning tag members here immediately instead of keeping them as plain ids that a recipe
 /// would have to intern itself on every reference, is good for performance.
 ///
 /// A required (non-`?`) tag member that isn't a known registered item or fluid is reported in
@@ -609,6 +624,45 @@ fn resolve_all_tags(
     (tags, tag_members)
 }
 
+/// Every id actually referenced by some recipe, directly or indirectly via a tag.
+///
+/// `direct_refs` and `used_tags` are provisional indices (see [`Resolver`]).
+fn resolve_referenced(
+    interner: &ItemInterner,
+    direct_refs: BTreeSet<ItemIndex>,
+    used_tags: BTreeSet<u32>,
+    provisional_tag_members: &[BTreeSet<ItemIndex>],
+) -> BTreeSet<String> {
+    let index_to_key: BTreeMap<ItemIndex, &str> = interner
+        .by_key
+        .iter()
+        .map(|(key, &index)| (index, key.as_str()))
+        .collect();
+
+    let mut referenced: BTreeSet<String> = direct_refs
+        .into_iter()
+        .map(|index| {
+            (*index_to_key
+                .get(&index)
+                .expect("every direct_refs index was interned, so has an entry in by_key"))
+            .to_owned()
+        })
+        .collect();
+    for tag_position in used_tags {
+        let position = usize::try_from(tag_position).expect("tag position fits usize");
+        let members = provisional_tag_members.get(position).expect(
+            "used_tags positions come from tag_index, in bounds for provisional_tag_members",
+        );
+        for member in members {
+            let key = *index_to_key
+                .get(member)
+                .expect("every tag member index was interned, so has an entry in by_key");
+            let _: bool = referenced.insert(key.to_owned());
+        }
+    }
+    referenced
+}
+
 /// Resolves a flat list of alternatives to the set of [`Item`]s.
 fn resolve_leaves(
     leaves: &[Leaf],
@@ -618,13 +672,20 @@ fn resolve_leaves(
     for leaf in leaves {
         match leaf {
             Leaf::Item(key) => {
-                let _: bool = out.insert(resolver.interner.borrow_mut().intern(key));
+                let index = resolver.interner.borrow_mut().intern(key);
+                let _: bool = resolver.direct_refs.borrow_mut().insert(index);
+                let _: bool = out.insert(index);
             }
             Leaf::Tag(tag_id) => {
                 let members = resolver
                     .tag_members
                     .get(tag_id.as_str())
                     .ok_or_else(|| format!("unresolved tag {tag_id:?}"))?;
+                let tag_position = resolver.tag_index.get(tag_id.as_str()).copied().expect(
+                    "tag_index and tag_members are built from the same tags list, so share \
+                     the same keys",
+                );
+                let _: bool = resolver.used_tags.borrow_mut().insert(tag_position);
                 out.extend(members.iter().copied());
             }
         }
@@ -678,7 +739,9 @@ pub fn validate_chance(raw: f32) -> Result<f32, String> {
 /// Resolves a bare output item or fluid id to its provisional [`ItemIndex`]. Never fails,
 /// see [`ItemInterner`].
 fn resolve_output_id(id: &str, resolver: &Resolver<'_>) -> ItemIndex {
-    resolver.interner.borrow_mut().intern(id)
+    let index = resolver.interner.borrow_mut().intern(id);
+    let _: bool = resolver.direct_refs.borrow_mut().insert(index);
+    index
 }
 
 /// Parses every recognized recipe file, paired with its declared `type`.
@@ -761,6 +824,36 @@ fn parse_recipes(
     drafts
 }
 
+/// Owned backing data for a tag-less [`Resolver`].
+#[cfg(test)]
+#[derive(Default)]
+struct PlainResolverParts {
+    /// Backing for [`Resolver::interner`].
+    interner: RefCell<ItemInterner>,
+    /// Backing for [`Resolver::tag_index`]. Always empty.
+    tag_index: BTreeMap<String, u32>,
+    /// Backing for [`Resolver::tag_members`]. Always empty.
+    tag_members: BTreeMap<String, &'static BTreeSet<ItemIndex>>,
+    /// Backing for [`Resolver::direct_refs`].
+    direct_refs: RefCell<BTreeSet<ItemIndex>>,
+    /// Backing for [`Resolver::used_tags`].
+    used_tags: RefCell<BTreeSet<u32>>,
+}
+
+#[cfg(test)]
+impl PlainResolverParts {
+    /// Borrows a [`Resolver`] from this.
+    fn resolver(&self) -> Resolver<'_> {
+        Resolver {
+            tag_index: &self.tag_index,
+            tag_members: &self.tag_members,
+            interner: &self.interner,
+            direct_refs: &self.direct_refs,
+            used_tags: &self.used_tags,
+        }
+    }
+}
+
 #[cfg(test)]
 #[expect(
     clippy::literal_string_with_formatting_args,
@@ -773,8 +866,8 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use super::{
-        build_items, ingest, resolve_all_tags, resolve_output_id, tag_id_from_path,
-        validate_chance, ItemInterner, ParseReport, RawFile, Resolver,
+        ItemInterner, ParseReport, PlainResolverParts, RawFile, build_items, ingest,
+        resolve_all_tags, resolve_output_id, tag_id_from_path, validate_chance,
     };
     use crate::model::{ItemIndex, ItemKind};
 
@@ -890,10 +983,12 @@ mod tests {
 
         assert_eq!(items.len(), 1, "the id collapses to one entry");
         assert_eq!(items.first().expect("one item").kind(), ItemKind::Item);
-        assert!(report
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.message.contains("both an item and a fluid")));
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains("both an item and a fluid"))
+        );
     }
 
     #[test]
@@ -1052,14 +1147,8 @@ mod tests {
 
     #[test]
     fn resolve_output_id_interns_any_string_unconditionally() {
-        let tag_index: BTreeMap<String, u32> = BTreeMap::new();
-        let tag_members: BTreeMap<String, &BTreeSet<ItemIndex>> = BTreeMap::new();
-        let interner = RefCell::new(ItemInterner::default());
-        let resolver = Resolver {
-            tag_index: &tag_index,
-            tag_members: &tag_members,
-            interner: &interner,
-        };
+        let parts = PlainResolverParts::default();
+        let resolver = parts.resolver();
 
         let first = resolve_output_id("gtceu:programmed_circuit{configuration:1}", &resolver);
         let second = resolve_output_id("gtceu:programmed_circuit{configuration:1}", &resolver);
@@ -1159,6 +1248,49 @@ mod tests {
             input.members().iter().next().copied(),
             Some(ItemIndex::new(1)),
             "the NBT-folded synthetic id resolves to its final, correctly-sorted index"
+        );
+    }
+
+    /// A tag gets resolved and its members interned regardless of whether any recipe uses it
+    /// (see [`resolve_all_tags`]). That alone shouldn't count its members as referenced
+    /// though.
+    #[test]
+    fn a_member_of_an_unused_tag_is_still_reported_as_registered_but_unreferenced() {
+        let files = [
+            RawFile {
+                path: "registries/item.json".to_owned(),
+                bytes: br#"{"minecraft:dirt": "c", "minecraft:stone": "c", "minecraft:planks": "c"}"#.to_vec(),
+            },
+            RawFile {
+                path: "registries/fluid.json".to_owned(),
+                bytes: b"{}".to_vec(),
+            },
+            RawFile {
+                path: "tags/minecraft/item/forge/dirts.json".to_owned(),
+                bytes: br#"["minecraft:dirt"]"#.to_vec(),
+            },
+            RawFile {
+                path: "tags/minecraft/item/forge/stones.json".to_owned(),
+                bytes: br#"["minecraft:stone"]"#.to_vec(),
+            },
+            RawFile {
+                path: "recipes/minecraft/planks_from_dirt.json".to_owned(),
+                bytes: br#"{
+                    "type": "minecraft:crafting_shapeless",
+                    "ingredients": [{"tag": "forge:dirts"}],
+                    "result": {"item": "minecraft:planks"}
+                }"#
+                .to_vec(),
+            },
+        ];
+
+        let (_graph, report) = ingest(&files);
+
+        assert_eq!(
+            report.registered_but_unreferenced,
+            vec!["minecraft:stone".to_owned()],
+            "forge:stones is never used by a recipe, so minecraft:dirt (via forge:dirts) and \
+             minecraft:planks (a direct output) should be the only ids counted as referenced"
         );
     }
 }
