@@ -1,43 +1,128 @@
 //! Rules set local analysis inputs from `rules.toml`.
 //!
-//! Ordered selector -> action pairs: required items, propagation, stage and decomposition. The
-//! last rule to match wins per attribute. Every rule must carry a reason, for the report's
-//! sake.
+//! Ordered selector -> action pairs. A selector selects a set of items or recipes, and an
+//! action does things like "set the item to be required", "specify the item as a world
+//! source", or "specify the recipe as useless".
 //!
-//! Every rule is either `[[item-rule]]` or `[[recipe-rule]]`. This header fixes which selector
-//! keys and which actions are valid for that rule.
+//! The **last** rule to match wins, for each attribute and item. Every rule must also carry a
+//! reason so that the report is easier to read.
 //!
-//! TODO: Document the possible filters and actions here? Or perhaps include a link to the
-//! documentation of both, which surely explain both things in detail.
+//! TODO: Is there a cool way we could individually validate all of these TOML examples as
+//! valid rules.rs syntax in tests?
 //!
 //! ```toml
 //! [[item-rule]]
-//! reason = "batteries are useful as inventory items and should be required craftable"
-//! filter = { id = "/_battery$/" }
+//! reason = "oak boats are useful for travelling"
+//! filter = { id = "minecraft:oak_boat" }
 //! action = { required = true }
+//! ```
 //!
+//! This selects the item with id `minecraft:oak_boat` and sets it as a required item. The `id`
+//! field also supports regexes, if surrounded by slashes:
+//!
+//! ```toml
 //! [[item-rule]]
-//! reason = "raw ores are obtainable from the world"
-//! filter = { tag = "forge:raw_materials" }
+//! reason = "batteries are useful as inventory items and in battery buffers"
+//! filter = { mod = "gtceu", id = "/_battery$/" }
+//! action = { required = true }
+//! ```
+//!
+//! This finds all items in the `gtceu` (GregTech) namespace whose `id` ends with `_battery`
+//! and sets them as required. `mod` and `id` are two selectors here: One filtering for mods,
+//! one filtering for an `id`. The two conditions are ANDed together, because they are in
+//! {curly braces} (a TOML inline table). In other words, they must both be true. If you would
+//! like to instead have ORed selectors, i.e. two selectors for which only one needs to be
+//! true, you can use \[square brackets\] (a TOML array) instead:
+//!
+//! ```toml
+//! [[item-rule]]
+//! reason = "ores can be found underground"
+//! filter = [ { tag = "forge:raw_materials" }, { tag = "forge:ores" }]
 //! action = { world_source = true }
+//! ```
 //!
-//! [[recipe-rule]]
-//! reason = "recycling shouldn't keep anything else transitively required"
-//! filter = { type = "gtceu:macerator" }
-//! action = { propagate = "drop" }
+//! This finds all items that have tag `forge:raw_materials` or `forge:ores` and specifies they
+//! are all obtainable by just mining blocks in-world.
 //!
+//! Similarly, we can perform actions on individual recipes. Every rule is either
+//! `[[item-rule]]` or `[[recipe-rule]]`. Depending on whether you're writing a recipe-rule or
+//! item-rule, different selectors and actions are available, and you will be warned about
+//! invalid ones. Here is a recipe rule:
+//!
+//! ```toml
 //! [[recipe-rule]]
-//! reason = "cobblestone from the macerator is junk, but keep the ore dust"
-//! filter = { type = "gtceu:macerator" }
-//! apply_to_output = { id = "minecraft:cobblestone" }
+//! reason = "recycling pipes shouldn't ever be counted as a material source"
+//! filter = { type = "gtceu:macerator", id = "/macerate_.*_fluid_pipe$/" }
 //! action = { propagate = "drop" }
 //! ```
 //!
-//! `apply_to_output`, only valid on `[[recipe-rule]]`, narrows `propagate` to just the matched
-//! recipe's outputs matching it, instead of every output; omitting it keeps the every-output
-//! default.
+//! TODO: This example would be a lot better had we already implemented recipe categories (not
+//! just types). Also, do recipe types correlate exactly to their path tail?
 //!
-//! TODO: Describe the above examples better.
+//! This finds all GregTech recipes that macerate a fluid pipe and sets their propagation state
+//! to "drop", which translates to something like "When asked how to obtain copper dust, please
+//! don't suggest macerating copper pipes as a useful source". If a recipe has multiple
+//! outputs, you may want to say that the recipe is a useful source of one of the outputs, but
+//! not a useful source for a different output:
+//!
+//! ```toml
+//! [[recipe-rule]]
+//! reason = "stone dust from ore grinding is junk"
+//! filter = { type = "gtceu:macerator", id = "/_ore_/" }
+//! apply_to_output = { id = "gtceu:stone_dust" }
+//! action = { propagate = "drop" }
+//! ```
+//!
+//! For instance, consider the GregTech recipe that macerates one gold ore into crushed gold
+//! ore and some stone dust. This filter means that:
+//! - When asking "What's a useful source of stone dust?", gold ore maceration will **not** be
+//!   brought up, but
+//! - When asking "What's a useful source of crushed gold ore?", gold ore maceration will be
+//!   brought up.
+//!
+//! You can also filter recipes by what inputs / outputs they have. For instance:
+//!
+//! ```toml
+//! [[recipe-rule]]
+//! reason = "the greenhouse recipes using fertilizer are always stronger"
+//! filter = { type = "gtceu:greenhouse", not = { has_input = { id = "gtceu:fertilizer" } } }
+//! action = { propagate = "drop" }
+//! ```
+//!
+//! This finds all greenhouse recipes that do not have `gtceu:fertilizer` as one of its inputs,
+//! and marks them as useless for all outputs.
+//!
+//! ## Selectors
+//!
+//! The field `filter` is a [`Selector`], fully described there. In short:
+//!
+//! - `id`, `mod`, `type`: Item or recipe, matched exactly as a string, or against a `/regex/`
+//!   if surrounded by slashes.
+//! - `tag`: Item only, matches tag membership.
+//! - `has_input`, `has_output`: Recipe only, matches if any of the recipe's input/output slots
+//!   match the contained selector.
+//! - `is_catalyst`: Only valid inside a `has_input` selector, matches a slot whose chance is
+//!   zero, i.e. it's never actually consumed or produced.
+//! - A TOML {table} ANDs its keys together. An \[array\] ORs its entries. A `not` negates.
+//!
+//! ## Actions
+//!
+//! `[[item-rule]]`'s `action` may set any number of these:
+//! - `required` (bool, default false): marks or unmarks the item as directly required.
+//! - `world_source` (bool, default false): marks or unmarks the item as obtainable from the
+//!   world, meaning it needs no recipe that produces it, because the player can just mine it
+//!   from the world.
+//!
+//! `[[recipe-rule]]`'s `action` may set:
+//!
+//! - `propagate` (`true`, `"inert"`, or `"drop"`, default `true`): Consider a recipe, and
+//!   consider all its possible output items, with an arrow going from each output item to the
+//!   recipe. An arrow from an item to a recipe signifies that the recipe is a useful way of
+//!   obtaining that item. "drop" drops the arrow. Unless specified otherwise, this hides _all_
+//!   the arrows of the recipe. If you wish to only hide certain arrows, the additional field
+//!   `apply_to_output` only hides the arrows that match the selector in `apply_to_output`. The
+//!   three values `true`, `"inert"` and `"drop"` correspond to [`EdgeState::Propagate`],
+//!   [`Inert`](EdgeState::Inert), and [`Dropped`](EdgeState::Dropped).
 
 pub mod selector;
 
