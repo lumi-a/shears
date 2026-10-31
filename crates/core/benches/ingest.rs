@@ -24,7 +24,7 @@ use core::time::Duration;
 use criterion::{criterion_group, criterion_main, Criterion};
 use shears_core::ingest;
 
-#[path = "../tests/support/mod.rs"]
+#[path = "../tests/support/helpers.rs"]
 mod support;
 
 /// Benchmarks `ingest()` over the real Monifactory fixture.

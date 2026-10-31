@@ -23,7 +23,7 @@ use std::collections::BTreeMap;
 use std::time::Instant;
 
 use shears_core::{ingest, io};
-#[path = "../tests/support/mod.rs"]
+#[path = "../tests/support/helpers.rs"]
 mod support;
 
 #[expect(

@@ -16,7 +16,7 @@ use std::time::Instant;
 use shears_core::ingest;
 
 /// The archive's one top-level directory present as a prefix on every entry's path.
-#[path = "../tests/support/mod.rs"]
+#[path = "../tests/support/helpers.rs"]
 mod support;
 
 #[expect(
