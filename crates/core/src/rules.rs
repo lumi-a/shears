@@ -422,10 +422,8 @@ impl RuleSet {
     /// Last match winning per attribute, since later writes to
     /// [`NodeAttrs`]/[`EdgeStates`] simply overwrite earlier ones.
     ///
-    /// Item rules and recipe rules never change the same attribute (TODO: ensure this
-    /// remains the case, somehow?), so applying every item rule before every recipe rule
-    /// doesn't change anything about the outcome (TODO: Will we even need this guarantee
-    /// in the future? If not, we should drop it for now.).
+    /// Item rules and recipe rules never change the same attribute, so applying every item
+    /// rule before every recipe rule doesn't change anything about the outcome.
     ///
     /// `file` identifies this rule file for [`Cause::Rule`]'s `file` field, in load order
     /// (presets first, then local).
@@ -653,11 +651,13 @@ mod tests {
 
         assert!(!attrs.is_required(ItemIndex::new(0)), "nothing was set");
         assert_eq!(rules.warnings().len(), 1);
-        assert!(rules
-            .warnings()
-            .first()
-            .expect("exactly one warning")
-            .contains("item-rule[0]"));
+        assert!(
+            rules
+                .warnings()
+                .first()
+                .expect("exactly one warning")
+                .contains("item-rule[0]")
+        );
     }
 
     #[test]

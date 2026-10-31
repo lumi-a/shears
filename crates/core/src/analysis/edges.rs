@@ -263,10 +263,6 @@ impl NodeAttrs {
 
     /// Unmarks `item` as required directly and clears its cause.
     ///
-    /// TODO: This should probably have a cause for being cleared, no? Does that make
-    /// sense? Perhaps we should have a vector of causes instead? Feature bloat for now,
-    /// just for future plans perhaps.
-    ///
     /// # Panics
     ///
     /// If `item` is out of bounds for the graph this was built from.
