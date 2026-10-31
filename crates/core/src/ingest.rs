@@ -663,8 +663,6 @@ pub const CHANCE_TOLERANCE: f32 = 1e-5;
 /// and "this is a definitely consumed item", in case some recipes have, for any reason, messed
 /// up numbers there.
 ///
-/// TODO: This function should be used.
-///
 /// # Errors
 ///
 /// If `raw` is more than [`CHANCE_TOLERANCE`] outside `[0, 1]`. That is, if `raw <=
@@ -776,8 +774,8 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use super::{
-        ItemInterner, ParseReport, RawFile, Resolver, build_items, ingest, resolve_all_tags,
-        resolve_output_id, tag_id_from_path, validate_chance,
+        build_items, ingest, resolve_all_tags, resolve_output_id, tag_id_from_path,
+        validate_chance, ItemInterner, ParseReport, RawFile, Resolver,
     };
     use crate::model::{ItemIndex, ItemKind};
 
@@ -893,12 +891,10 @@ mod tests {
 
         assert_eq!(items.len(), 1, "the id collapses to one entry");
         assert_eq!(items.first().expect("one item").kind(), ItemKind::Fluid);
-        assert!(
-            report
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.message.contains("both an item and a fluid"))
-        );
+        assert!(report
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("both an item and a fluid")));
     }
 
     #[test]
