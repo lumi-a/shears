@@ -183,7 +183,6 @@ fn read_rules(path: &Path) -> Result<RuleSet, AnalyzeError> {
 #[expect(
     clippy::print_stdout,
     reason = "a CLI's whole purpose is printing its result"
-    // TODO: Aren't there, like, `clap::log` functions like in python's Click?
 )]
 fn print_summary(summary: &Summary) {
     println!(
