@@ -7,9 +7,6 @@
 //! The **last** rule to match wins, for each attribute and item. Every rule must also carry a
 //! reason so that the report is easier to read.
 //!
-//! TODO: Is there a cool way we could individually validate all of these TOML examples as
-//! valid rules.rs syntax in tests?
-//!
 //! ```toml
 //! [[item-rule]]
 //! reason = "oak boats are useful for travelling"
@@ -621,6 +618,57 @@ mod tests {
     use crate::analysis::edges::{Cause, EdgeState, EdgeStates, NodeAttrs, RuleKind};
     use crate::graph_dsl::parse;
     use crate::model::{ItemIndex, RecipeIndex};
+
+    /// Get the toml source of all the docstring examples of this crate.
+    #[expect(
+        clippy::shadow_reuse,
+        reason = "stripping an outer then an inner prefix off the same line, test-only helper"
+    )]
+    fn module_doc_toml_examples() -> Vec<String> {
+        let source = include_str!("rules.rs");
+        let mut examples = Vec::new();
+        let mut current: Option<String> = None;
+        for line in source.lines() {
+            // This is quite crude, but it will do
+            let Some(after_bang) = line.strip_prefix("//!") else {
+                continue;
+            };
+            let after_bang = after_bang.strip_prefix(' ').unwrap_or(after_bang);
+            if let Some(block) = current.as_mut() {
+                if after_bang == "```" {
+                    examples.push(current.take().expect("just matched Some above"));
+                } else {
+                    block.push_str(after_bang);
+                    block.push('\n');
+                }
+            } else if after_bang == "```toml" {
+                current = Some(String::new());
+            } else {
+                // A line outside any ```toml block, not our business.
+            }
+        }
+        assert!(
+            current.is_none(),
+            "an unterminated ```toml block in the module doc comment"
+        );
+        examples
+    }
+
+    /// Validate all the toml docstring examples.
+    #[test]
+    #[expect(clippy::panic, reason = "this is only used in tests")]
+    fn every_module_doc_toml_example_is_a_valid_rules_toml_document() {
+        let examples = module_doc_toml_examples();
+        assert!(
+            !examples.is_empty(),
+            "should there not be some ```toml examples in the module doc?"
+        );
+        for (index, example) in examples.iter().enumerate() {
+            let _: RuleSet = RuleSet::parse(example).unwrap_or_else(|error| {
+                panic!("doc example {index} failed to parse: {error}\n{example}")
+            });
+        }
+    }
 
     #[test]
     fn required_action_marks_matching_items() {
