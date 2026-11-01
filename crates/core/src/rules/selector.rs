@@ -87,7 +87,7 @@ impl Pattern {
     /// If it's wrapped in `/.../`, it's treated as a regex, anything else is exact.
     ///
     /// The regexes are unanchored, i.e. `/dirt/` will also match `coarse_dirt`. This is
-    /// for sake of compatibility with `KubeJS`. Compatibility with the Java regex engine
+    /// for sake of compatibility with KubeJS. Compatibility with the Java regex engine
     /// is mostly given, but not guaranteed. This may be changed in the future.
     ///
     /// The regex crate used is ([`fancy_regex`]), so lookaround and backreferences are
@@ -232,7 +232,7 @@ pub fn parse(value: &toml::Value, context: Context) -> Result<Selector, Selector
 
 /// Parses one selector table.
 ///
-/// Every key becomes a clause, `AND`ed together.
+/// Every key becomes a clause, ANDed together.
 fn parse_table(table: &toml::Table, context: Context) -> Result<Selector, SelectorError> {
     let clauses = table
         .iter()

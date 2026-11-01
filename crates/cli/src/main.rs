@@ -11,7 +11,7 @@ use shears_core::analysis::transitively_required::transitively_required;
 use shears_core::model::Graph;
 use shears_core::rules::{RuleError, RuleSet};
 
-/// shears: Eliminate unneeded recipes in `KubeJS` Minecraft Modpacks.
+/// shears: Eliminate unneeded recipes in KubeJS Minecraft Modpacks.
 #[derive(Debug, Parser)]
 #[command(version, about)]
 struct Cli {

@@ -522,7 +522,7 @@ fn resolve_chance(maybe_spec: Option<&ChanceSpec>, node: &Value) -> Result<f32, 
 /// Reads the entries a [`SlotSpec`]'s path resolved to.
 ///
 /// Reads an array as its elements, and reads a single object as a one-element list (some
-/// shapes have exactly one not-wrapped result instead of a one-element array, e.g. `EnderIO`'s
+/// shapes have exactly one not-wrapped result instead of a one-element array, e.g. EnderIO's
 /// bare `result` object).
 fn as_entries(node: &Value) -> Result<Vec<&Value>, String> {
     match node {

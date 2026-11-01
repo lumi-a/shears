@@ -130,7 +130,7 @@ pub struct Slot {
     count: u32,
     /// Chance that this slot is consumed, in `[0, 1]`. Catalyst are chance 0.
     ///
-    /// `GTCEu` encodes this as `chance / maxChance`, with
+    /// GTCEu encodes this as `chance / maxChance`, with
     /// maxChance == 10000 if unspecified.
     chance: f32,
 }
@@ -189,7 +189,7 @@ pub struct Output {
     count: u32,
     /// Chance of this output occurring, in `[0, 1]`.
     ///
-    /// `GTCEu` encodes this as `chance / maxChance`, with
+    /// GTCEu encodes this as `chance / maxChance`, with
     /// maxChance == 10000 if unspecified.
     chance: f32,
 }
