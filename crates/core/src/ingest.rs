@@ -866,8 +866,8 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use super::{
-        ItemInterner, ParseReport, PlainResolverParts, RawFile, build_items, ingest,
-        resolve_all_tags, resolve_output_id, tag_id_from_path, validate_chance,
+        build_items, ingest, resolve_all_tags, resolve_output_id, tag_id_from_path,
+        validate_chance, ItemInterner, ParseReport, PlainResolverParts, RawFile,
     };
     use crate::model::{ItemIndex, ItemKind};
 
@@ -983,12 +983,10 @@ mod tests {
 
         assert_eq!(items.len(), 1, "the id collapses to one entry");
         assert_eq!(items.first().expect("one item").kind(), ItemKind::Item);
-        assert!(
-            report
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.message.contains("both an item and a fluid"))
-        );
+        assert!(report
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("both an item and a fluid")));
     }
 
     #[test]

@@ -455,7 +455,7 @@ const fn is_catalyst(chance: f32) -> bool {
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::{Context, Selector, SelectorError, matches_item, matches_recipe, parse};
+    use super::{matches_item, matches_recipe, parse, Context, Selector, SelectorError};
     use crate::graph_dsl::parse as parse_graph;
     use crate::model::{Graph, Item, ItemIndex, ItemKind, Output, Recipe, RecipeIndex, Slot};
 
@@ -469,30 +469,13 @@ mod tests {
     }
 
     /// Every non-blank, non-comment line inside this module's own ```` ```toml ```` doc block.
-    #[expect(
-        clippy::shadow_reuse,
-        reason = "stripping an outer then an inner prefix off the same line, test-only helper"
-    )]
     fn module_doc_filter_examples() -> Vec<String> {
-        let source = include_str!("selector.rs");
-        let mut examples = Vec::new();
-        let mut inside_block = false;
-        for line in source.lines() {
-            let Some(after_bang) = line.strip_prefix("//!") else {
-                continue;
-            };
-            let after_bang = after_bang.strip_prefix(' ').unwrap_or(after_bang);
-            if after_bang == "```toml" {
-                inside_block = true;
-            } else if after_bang == "```" {
-                inside_block = false;
-            } else if inside_block && !after_bang.is_empty() && !after_bang.starts_with('#') {
-                examples.push(after_bang.to_owned());
-            } else {
-                // A line outside any ```toml block, or a blank/comment line inside one.
-            }
-        }
-        examples
+        super::super::doc_comment_fenced_blocks(include_str!("selector.rs"), "toml")
+            .iter()
+            .flat_map(|block| block.lines())
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .map(str::to_owned)
+            .collect()
     }
 
     #[test]

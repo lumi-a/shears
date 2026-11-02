@@ -123,6 +123,42 @@
 
 pub mod selector;
 
+/// Every fenced code block tagged `` ```<language> `` in `source`'s doc comment, with the
+/// comment prefix and the fence markers stripped.
+#[cfg(test)]
+#[expect(
+    clippy::shadow_reuse,
+    reason = "stripping an outer then an inner prefix off the same line"
+)]
+fn doc_comment_fenced_blocks(source: &str, language: &str) -> Vec<String> {
+    let fence_start = format!("```{language}");
+    let mut blocks = Vec::new();
+    let mut current: Option<String> = None;
+    for line in source.lines() {
+        let Some(after_bang) = line.strip_prefix("//!") else {
+            continue;
+        };
+        let after_bang = after_bang.strip_prefix(' ').unwrap_or(after_bang);
+        if let Some(block) = current.as_mut() {
+            if after_bang == "```" {
+                blocks.push(current.take().expect("just matched Some above"));
+            } else {
+                block.push_str(after_bang);
+                block.push('\n');
+            }
+        } else if after_bang == fence_start {
+            current = Some(String::new());
+        } else {
+            // A line outside any fenced block, not our business.
+        }
+    }
+    assert!(
+        current.is_none(),
+        "an unterminated ```{language} block in the module doc comment"
+    );
+    blocks
+}
+
 use serde::Deserialize;
 use toml::de::Error as TomlError;
 
@@ -620,38 +656,8 @@ mod tests {
     use crate::model::{ItemIndex, RecipeIndex};
 
     /// Get the toml source of all the docstring examples of this crate.
-    #[expect(
-        clippy::shadow_reuse,
-        reason = "stripping an outer then an inner prefix off the same line, test-only helper"
-    )]
     fn module_doc_toml_examples() -> Vec<String> {
-        let source = include_str!("rules.rs");
-        let mut examples = Vec::new();
-        let mut current: Option<String> = None;
-        for line in source.lines() {
-            // This is quite crude, but it will do
-            let Some(after_bang) = line.strip_prefix("//!") else {
-                continue;
-            };
-            let after_bang = after_bang.strip_prefix(' ').unwrap_or(after_bang);
-            if let Some(block) = current.as_mut() {
-                if after_bang == "```" {
-                    examples.push(current.take().expect("just matched Some above"));
-                } else {
-                    block.push_str(after_bang);
-                    block.push('\n');
-                }
-            } else if after_bang == "```toml" {
-                current = Some(String::new());
-            } else {
-                // A line outside any ```toml block, not our business.
-            }
-        }
-        assert!(
-            current.is_none(),
-            "an unterminated ```toml block in the module doc comment"
-        );
-        examples
+        super::doc_comment_fenced_blocks(include_str!("rules.rs"), "toml")
     }
 
     /// Validate all the toml docstring examples.
