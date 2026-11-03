@@ -36,6 +36,9 @@
           pkgs.rust-analyzer
           pkgs.samply
           pkgs.libcap
+          pkgs.nodejs
+          pkgs.wasm-pack
+          pkgs.wasm-bindgen-cli
         ];
 
         # The `samply` profiler needs CAP_PERFMON to call perf_event_open(), which
