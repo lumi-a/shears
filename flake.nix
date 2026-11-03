@@ -37,6 +37,7 @@
           pkgs.samply
           pkgs.libcap
           pkgs.nodejs
+          pkgs.pnpm
           pkgs.wasm-pack
           pkgs.wasm-bindgen-cli
         ];
