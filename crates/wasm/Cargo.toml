@@ -1,0 +1,22 @@
+[package]
+name = "shears-wasm"
+description = "WASM bindings for shears."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+shears-core = { path = "../core" }
+wasm-bindgen = "0.2"
