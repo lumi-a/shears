@@ -1,3 +1,6 @@
 /target
 .direnv
 .samply-wrapped
+
+.DS_Store
+Thumbs.db
