@@ -35,7 +35,12 @@ fn bench_ingest(c: &mut Criterion) {
     group.sample_size(20);
     group.measurement_time(Duration::from_secs(25));
     group.bench_function("monifactory", |b| {
-        b.iter(|| ingest::ingest(criterion::black_box(&files)));
+        b.iter(|| {
+            ingest::ingest(
+                criterion::black_box(&files),
+                criterion::black_box(ingest::DEFAULT_SHAPES_TOML),
+            )
+        });
     });
     group.finish();
 }

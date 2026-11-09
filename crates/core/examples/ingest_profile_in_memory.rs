@@ -33,7 +33,8 @@ fn main() {
     let files = support::read_fixture_in_memory(&archive_path);
     let decode_elapsed = start.elapsed();
 
-    let (graph, report) = ingest::ingest(&files);
+    let (graph, report) = ingest::ingest(&files, ingest::DEFAULT_SHAPES_TOML)
+        .expect("DEFAULT_SHAPES_TOML is valid");
 
     let total_elapsed = start.elapsed();
 

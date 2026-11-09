@@ -33,7 +33,8 @@ mod tests {
         let root = scratch.path().join("vanilla-1.20.1");
 
         let files = io::read_export_dir(&root).expect("reading the extracted export");
-        let (graph, report) = ingest::ingest(&files);
+        let (graph, report) = ingest::ingest(&files, ingest::DEFAULT_SHAPES_TOML)
+            .expect("DEFAULT_SHAPES_TOML is valid");
 
         let graph_json = serde_json::to_value(&graph).expect("serializing the ingested graph");
         let items = graph_json

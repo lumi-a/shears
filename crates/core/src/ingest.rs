@@ -15,7 +15,7 @@
 
 mod ingredient;
 mod path;
-mod shapes;
+pub mod shapes;
 mod vanilla;
 
 use core::cell::RefCell;
@@ -24,7 +24,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::Value;
 
 use self::ingredient::Leaf;
+use self::shapes::ShapesError;
 use crate::model::{Graph, Item, ItemIndex, ItemKind, Output, Recipe, Slot};
+
+/// This crate's reference recipe-shape config, as plain TOML text.
+///
+/// Only really useful for tests, not included by default.
+pub const DEFAULT_SHAPES_TOML: &str = include_str!("ingest/shapes.toml");
 
 /// One file from the `/kubejs export`.
 #[derive(Debug)]
@@ -189,18 +195,26 @@ type RecipeAdapter = fn(String, &Value, &Resolver<'_>) -> Result<RecipeDraft, St
 /// Turns a raw export into a normalized graph and a parse report.
 ///
 /// Vanilla recipe types only, for now; everything else becomes an "unhandled recipe type"
-/// diagnostic rather than being silently dropped.
+/// diagnostic rather than being silently dropped (unless `shapes_toml` describes a shape for
+/// it instead).
+///
+/// # Errors
+///
+/// If `shapes_toml` itself fails to parse.
 ///
 /// # Panics
 ///
 /// Only if a single export has more than [`u32::MAX`] items, tags or recipe types, which isn't
 /// a real export this tool will ever see.
-#[must_use]
 #[expect(
     clippy::missing_inline_in_public_items,
     reason = "top-level large function, usually has little reason to be inlined."
 )]
-pub fn ingest(files: &[RawFile]) -> (Graph, ParseReport) {
+pub fn ingest(
+    files: &[RawFile],
+    shapes_toml: &str,
+) -> Result<(Graph, ParseReport), ShapesError> {
+    let shapes = shapes::Shapes::parse(shapes_toml)?;
     let mut report = ParseReport::default();
 
     let (item_keys, fluid_keys, raw_tags) = read_registries_and_tags(files, &mut report);
@@ -243,7 +257,7 @@ pub fn ingest(files: &[RawFile]) -> (Graph, ParseReport) {
         direct_refs: &direct_refs_cell,
         used_tags: &used_tags_cell,
     };
-    let mut recipe_drafts = parse_recipes(files, &resolver, &mut report);
+    let mut recipe_drafts = parse_recipes(files, &resolver, &shapes, &mut report);
     recipe_drafts.sort_unstable_by(|(_, a), (_, b)| a.id.cmp(&b.id));
 
     let interner = interner_cell.into_inner();
@@ -309,7 +323,7 @@ pub fn ingest(files: &[RawFile]) -> (Graph, ParseReport) {
         })
         .collect();
 
-    (Graph::new(1, items, recipes, tags, rtypes), report)
+    Ok((Graph::new(1, items, recipes, tags, rtypes), report))
 }
 
 /// Reads `registries/item.json`, `registries/fluid.json`, and every item and fluid tag file
@@ -753,6 +767,7 @@ fn resolve_output_id(id: &str, resolver: &Resolver<'_>) -> ItemIndex {
 fn parse_recipes(
     files: &[RawFile],
     resolver: &Resolver<'_>,
+    shapes: &shapes::Shapes,
     report: &mut ParseReport,
 ) -> Vec<(String, RecipeDraft)> {
     let mut drafts = Vec::new();
@@ -809,7 +824,7 @@ fn parse_recipes(
             continue;
         }
 
-        match shapes::Shapes::builtin().shape_for(&rtype) {
+        match shapes.shape_for(&rtype) {
             Some(shape) => match shapes::apply(id, &value, shape, resolver) {
                 Ok(draft) => drafts.push((rtype, draft)),
                 Err(message) => report.fail(&file.path, message),
@@ -868,6 +883,7 @@ mod tests {
     use super::{
         build_items, ingest, resolve_all_tags, resolve_output_id, tag_id_from_path,
         validate_chance, ItemInterner, ParseReport, PlainResolverParts, RawFile,
+        DEFAULT_SHAPES_TOML,
     };
     use crate::model::{ItemIndex, ItemKind};
 
@@ -1204,7 +1220,8 @@ mod tests {
             },
         ];
 
-        let (graph, report) = ingest(&files);
+        let (graph, report) =
+            ingest(&files, DEFAULT_SHAPES_TOML).expect("DEFAULT_SHAPES_TOML is valid");
 
         assert!(
             report.diagnostics.is_empty(),
@@ -1282,7 +1299,8 @@ mod tests {
             },
         ];
 
-        let (_graph, report) = ingest(&files);
+        let (_graph, report) =
+            ingest(&files, DEFAULT_SHAPES_TOML).expect("DEFAULT_SHAPES_TOML is valid");
 
         assert_eq!(
             report.registered_but_unreferenced,

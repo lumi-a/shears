@@ -10,7 +10,11 @@
 //! case of omnium: "take all possible elements and turn them into X omnium nuggets").
 
 use std::collections::BTreeMap;
+#[cfg(test)]
 use std::sync::OnceLock;
+
+#[cfg(test)]
+use crate::ingest::DEFAULT_SHAPES_TOML;
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -20,11 +24,6 @@ use super::ingredient::Leaf;
 use super::path::Path;
 use super::{resolve_leaves, resolve_output_id, slot_tag, RecipeDraft, Resolver};
 use crate::model::{Output, Slot};
-
-/// This crate's built-in shapes, as TOML text embedded at compile time.
-///
-/// Please keep this small-ish?
-const BUILTIN_SHAPES_TOML: &str = include_str!("shapes.toml");
 
 /// Where a [`MemberCase::Item`]'s base id comes from.
 #[derive(Debug)]
@@ -154,8 +153,12 @@ pub(super) struct Shapes {
 }
 
 /// A problem in a shapes TOML document itself.
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "clearest name for this type, unfortunately."
+)]
 #[derive(Debug, thiserror::Error)]
-pub(super) enum ShapesError {
+pub enum ShapesError {
     /// The document's shape was wrong.
     #[error(transparent)]
     Deserialize(#[from] TomlError),
@@ -260,7 +263,7 @@ impl Shapes {
     ///
     /// If the document's shape is wrong, a member entry is ambiguous or empty, or
     /// `recipe_to_shape` names a shape that doesn't exist.
-    fn parse(source: &str) -> Result<Self, ShapesError> {
+    pub(super) fn parse(source: &str) -> Result<Self, ShapesError> {
         let document: RawDocument = toml::from_str(source)?;
 
         let mut shapes = BTreeMap::new();
@@ -306,16 +309,21 @@ impl Shapes {
         })
     }
 
-    /// This crate's built-in shapes, parsed once.
+    /// This crate's reference shapes ([`crate::ingest::DEFAULT_SHAPES_TOML`]).
+    ///
+    /// Only parsed once, and only useful for tests.
+    ///
+    /// TODO: Is it tidy enough to keep this here then, instead of moving it to the test
+    /// helpers collection?
     ///
     /// # Panics
     ///
-    /// Never, unless `shapes.toml` itself is broken, which would bea bug in this crate, so
-    /// it's hopefully fine to panic rather than thread a `Result` through every call site.
+    /// Never, unless `shapes.toml` itself is broken, which would be raised during the tests.
+    #[cfg(test)]
     pub(super) fn builtin() -> &'static Self {
         static SHAPES: OnceLock<Shapes> = OnceLock::new();
         SHAPES.get_or_init(|| {
-            Self::parse(BUILTIN_SHAPES_TOML)
+            Self::parse(DEFAULT_SHAPES_TOML)
                 .expect("shapes.toml is valid, as checked by its own test")
         })
     }

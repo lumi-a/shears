@@ -40,7 +40,8 @@ fn main() {
     let files = io::read_export_dir(&root).expect("reading the extracted export");
     let read_elapsed = start.elapsed();
 
-    let (graph, report) = ingest::ingest(&files);
+    let (graph, report) = ingest::ingest(&files, ingest::DEFAULT_SHAPES_TOML)
+        .expect("DEFAULT_SHAPES_TOML is valid");
 
     let total_elapsed = start.elapsed();
 
