@@ -32,7 +32,9 @@ tar = { version = "0.4", default-features = false, optional = true }
 thiserror = "2.0.21"
 toml = "0.8"
 walkdir = { version = "2", optional = true }
-zip = { version = "9", default-features = false, features = [
+# Pinned to 9.4.1 because 9.4.2 makes zeroize mandatory, which would carry a
+# duplication of the `syn` crate.
+zip = { version = "=9.4.1", default-features = false, features = [
     "deflate-flate2-zlib-rs",
 ], optional = true }
 

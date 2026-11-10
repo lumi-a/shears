@@ -3,8 +3,8 @@
 use std::io::{Cursor, Error as IoError, Read as _};
 use std::path::Path;
 
-use ruzstd::decoding::StreamingDecoder;
 use ruzstd::decoding::errors::FrameDecoderError;
+use ruzstd::decoding::StreamingDecoder;
 use zip::result::ZipError;
 
 use crate::ingest::RawFile;
@@ -104,12 +104,12 @@ fn unpack_zip(bytes: &[u8]) -> Result<Vec<RawFile>, UnpackError> {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Cursor, Write as _, empty as empty_reader};
+    use std::io::{empty as empty_reader, Cursor, Write as _};
 
-    use zip::CompressionMethod;
     use zip::write::SimpleFileOptions;
+    use zip::CompressionMethod;
 
-    use super::{UnpackError, unpack};
+    use super::{unpack, UnpackError};
 
     /// Builds a `.tar.zst` archive in memory, the same way the committed fixtures were made.
     fn make_tar_zst(files: &[(&str, &[u8])]) -> Vec<u8> {
