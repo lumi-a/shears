@@ -1,5 +1,7 @@
 //! Lookups derived from a `Graph`. Not serialized, rebuilt after loading instead.
 
+use std::collections::BTreeMap;
+
 use crate::model::{Graph, ItemIndex, RecipeIndex};
 
 /// Reverse index from each item to the recipes that produce it.
@@ -58,9 +60,88 @@ impl Producers {
     }
 }
 
+/// Reverse lookup from an item's id to its index.
+///
+/// Items and recipes share no namespace of their own, so unlike selectors (which can match
+/// either), this is split into two types (see [`RecipesByKey`]).
+#[derive(Debug)]
+pub struct ItemsByKey {
+    /// Every item's id mapped to its index.
+    by_id: BTreeMap<String, ItemIndex>,
+}
+
+impl ItemsByKey {
+    /// Builds the reverse lookup from every item's id.
+    ///
+    /// # Panics
+    ///
+    /// If `graph` has more than `u32::MAX` items.
+    #[inline]
+    #[must_use]
+    pub fn build(graph: &Graph) -> Self {
+        let by_id = graph
+            .items()
+            .iter()
+            .enumerate()
+            .map(|(position, item)| {
+                let index = ItemIndex::new(
+                    u32::try_from(position).expect("fewer than u32::MAX items"),
+                );
+                (item.id().to_owned(), index)
+            })
+            .collect();
+        Self { by_id }
+    }
+
+    /// The index of the item with this id, if any.
+    #[inline]
+    #[must_use]
+    pub fn index_of(&self, id: &str) -> Option<ItemIndex> {
+        self.by_id.get(id).copied()
+    }
+}
+
+/// Reverse lookup from a recipe's id to its index.
+#[derive(Debug)]
+pub struct RecipesByKey {
+    /// Every recipe's id mapped to its index.
+    by_id: BTreeMap<String, RecipeIndex>,
+}
+
+impl RecipesByKey {
+    /// Builds the reverse lookup from every recipe's id.
+    ///
+    /// # Panics
+    ///
+    /// If `graph` has more than `u32::MAX` recipes.
+    #[inline]
+    #[must_use]
+    pub fn build(graph: &Graph) -> Self {
+        let by_id = graph
+            .recipes()
+            .iter()
+            .enumerate()
+            .map(|(position, recipe)| {
+                let index = RecipeIndex::new(
+                    u32::try_from(position).expect("fewer than u32::MAX recipes"),
+                );
+                (recipe.id().to_owned(), index)
+            })
+            .collect();
+        Self { by_id }
+    }
+
+    /// The index of the recipe with this id, if any.
+    #[inline]
+    #[must_use]
+    pub fn index_of(&self, id: &str) -> Option<RecipeIndex> {
+        self.by_id.get(id).copied()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::Producers;
+    use super::{ItemsByKey, Producers, RecipesByKey};
     use crate::graph_dsl::parse;
     use crate::model::{ItemIndex, RecipeIndex};
 
@@ -115,5 +196,63 @@ mod tests {
             producers.of(ItemIndex::new(0)),
             &[(RecipeIndex::new(0), 0), (RecipeIndex::new(0), 2)]
         );
+    }
+
+    #[test]
+    fn items_by_key_finds_the_index_of_a_known_id() {
+        let (graph, _required) = parse(
+            "
+            required concrete
+            mix: stone_dust + water -> concrete
+            ",
+        );
+        let by_key = ItemsByKey::build(&graph);
+
+        // Sorted item order: concrete=0, stone_dust=1, water=2.
+        assert_eq!(by_key.index_of("concrete"), Some(ItemIndex::new(0)));
+        assert_eq!(by_key.index_of("stone_dust"), Some(ItemIndex::new(1)));
+        assert_eq!(by_key.index_of("water"), Some(ItemIndex::new(2)));
+    }
+
+    #[test]
+    fn items_by_key_returns_none_for_an_unknown_id() {
+        let (graph, _required) = parse(
+            "
+            required concrete
+            mix: stone_dust + water -> concrete
+            ",
+        );
+        let by_key = ItemsByKey::build(&graph);
+
+        assert_eq!(by_key.index_of("minecraft:dirt"), None);
+    }
+
+    #[test]
+    fn recipes_by_key_finds_the_index_of_a_known_id() {
+        let (graph, _required) = parse(
+            "
+            required concrete
+            mix: stone_dust + water -> concrete
+            alt: sand + water -> concrete
+            ",
+        );
+        let by_key = RecipesByKey::build(&graph);
+
+        // Sorted recipe order: alt=0, mix=1.
+        assert_eq!(by_key.index_of("alt"), Some(RecipeIndex::new(0)));
+        assert_eq!(by_key.index_of("mix"), Some(RecipeIndex::new(1)));
+    }
+
+    #[test]
+    fn recipes_by_key_returns_none_for_an_unknown_id() {
+        let (graph, _required) = parse(
+            "
+            required concrete
+            mix: stone_dust + water -> concrete
+            ",
+        );
+        let by_key = RecipesByKey::build(&graph);
+
+        assert_eq!(by_key.index_of("nonexistent"), None);
     }
 }
