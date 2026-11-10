@@ -15,18 +15,26 @@ categories.workspace = true
 workspace = true
 
 [features]
+archive = ["dep:ruzstd", "dep:tar", "dep:zip"]
 fs = ["dep:walkdir"]
 parallel = []
 
 [dependencies]
 fancy-regex = "0.19.2"
 fixedbitset = "0.5"
+ruzstd = { version = "0.9", default-features = false, features = [
+    "std",
+], optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_path_to_error = "0.1"
+tar = { version = "0.4", default-features = false, optional = true }
 thiserror = "2.0.21"
 toml = "0.8"
 walkdir = { version = "2", optional = true }
+zip = { version = "9", default-features = false, features = [
+    "deflate-flate2-zlib-rs",
+], optional = true }
 
 [dev-dependencies]
 criterion = "0.5"

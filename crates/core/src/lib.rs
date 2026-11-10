@@ -23,6 +23,9 @@ pub mod rules;
 
 pub mod ingest;
 
+#[cfg(feature = "archive")]
+pub mod archive;
+
 /// Reads a raw export filesystem directory into [`ingest::RawFile`]s.
 ///
 /// Behind the `fs` feature.
