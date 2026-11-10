@@ -14,6 +14,8 @@ use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 /// Just a placeholder
+///
+/// TODO: Probably delete this and the other placeholder stuffs.
 #[must_use]
 #[wasm_bindgen]
 pub fn parses_empty_ruleset() -> bool {

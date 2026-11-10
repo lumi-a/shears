@@ -1,19 +1,42 @@
 import { createSignal, onMount } from "solid-js";
-import init, { parses_empty_ruleset } from "./wasm-pkg/shears_wasm";
+import init, { unpack_archive } from "./wasm-pkg/shears_wasm";
 
 function App() {
-  const [status, setStatus] = createSignal("loading wasm...");
+  const [ready, setReady] = createSignal(false);
+  const [status, setStatus] = createSignal("");
 
   onMount(async () => {
     await init();
-    setStatus(
-      `shears-wasm says: parses_empty_ruleset() = ${parses_empty_ruleset()}`,
-    );
+    setReady(true);
   });
+
+  const onFileChange = async (event: Event) => {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    setStatus("unpacking...");
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const summary = unpack_archive(bytes);
+      setStatus(
+        `${summary.file_count} files, ${summary.total_bytes} bytes total`,
+      );
+    } catch (error) {
+      setStatus(`error: ${String(error)}`);
+    }
+  };
 
   return (
     <main>
       <h1>shears</h1>
+      <p>{ready() ? "wasm ready" : "loading wasm..."}</p>
+      <input
+        type="file"
+        accept=".zip,.tar.zst,.zst"
+        disabled={!ready()}
+        onChange={onFileChange}
+      />
       <p>{status()}</p>
     </main>
   );
