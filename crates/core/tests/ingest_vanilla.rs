@@ -9,12 +9,14 @@
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
-fn extract_fixture(destination: &Path) {
+fn fixture_path() -> PathBuf {
     // Is this relative path stuff the correct way of doing things?
-    let archive_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../fixtures/vanilla-1.20.1.tar.zst");
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/vanilla-1.20.1.tar.zst")
+}
+
+fn extract_fixture(destination: &Path) {
     let archive =
-        File::open(&archive_path).expect("the committed vanilla fixture should exist");
+        File::open(fixture_path()).expect("the committed vanilla fixture should exist");
     let decoder = zstd::Decoder::new(archive).expect("a valid zstd stream");
     tar::Archive::new(decoder)
         .unpack(destination)
@@ -23,8 +25,45 @@ fn extract_fixture(destination: &Path) {
 
 #[cfg(test)]
 mod tests {
-    use super::extract_fixture;
-    use shears_core::{ingest, io};
+    use std::fs;
+
+    use super::{extract_fixture, fixture_path};
+    use shears_core::ingest::RawFile;
+    use shears_core::{archive, ingest, io};
+
+    fn sorted_paths(files: &[RawFile]) -> Vec<&str> {
+        let mut paths: Vec<&str> = files.iter().map(|file| file.path.as_str()).collect();
+        paths.sort_unstable();
+        paths
+    }
+
+    /// Uploading the archive (unpack and then find the root in memory) must see exactly the
+    /// export that extracting it to disk and reading the directory would see.
+    #[test]
+    fn unpacking_in_memory_matches_reading_the_extracted_directory() {
+        let scratch = tempfile::tempdir().expect("a scratch directory");
+        extract_fixture(scratch.path());
+        let from_directory = io::read_export_dir(&scratch.path().join("vanilla-1.20.1"))
+            .expect("reading the extracted export");
+
+        let bytes = fs::read(fixture_path()).expect("the committed vanilla fixture");
+        let unpacked = archive::unpack(&bytes).expect("a valid .tar.zst archive");
+        let (root, from_archive) =
+            ingest::find_root_directory::strip(unpacked).expect("one export root");
+        assert_eq!(root, "vanilla-1.20.1/");
+
+        assert_eq!(sorted_paths(&from_archive), sorted_paths(&from_directory));
+
+        let ingested_json = |files: &[RawFile]| {
+            let (graph, _report) = ingest::ingest(files, ingest::DEFAULT_SHAPES_TOML)
+                .expect("DEFAULT_SHAPES_TOML is valid");
+            serde_json::to_string(&graph).expect("serializing the ingested graph")
+        };
+        assert!(
+            ingested_json(&from_archive) == ingested_json(&from_directory),
+            "both routes should ingest to the identical graph"
+        );
+    }
 
     #[test]
     fn ingests_the_vanilla_fixture_with_only_expected_gaps() {

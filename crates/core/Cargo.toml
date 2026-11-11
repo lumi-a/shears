@@ -42,7 +42,7 @@ zip = { version = "=9.4.1", default-features = false, features = [
 criterion = "0.5"
 proptest = "1"
 sha2 = "0.10"
-shears-core = { path = ".", features = ["fs"] }
+shears-core = { path = ".", features = ["archive", "fs"] }
 tar = "0.4"
 tempfile = "3"
 zstd = "0.13"

@@ -13,6 +13,7 @@
 //! gets interned exactly like a real one and is reported afterwards once the full registry
 //! is available to check against.
 
+pub mod find_root_directory;
 mod ingredient;
 mod path;
 pub mod shapes;

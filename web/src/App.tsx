@@ -19,8 +19,12 @@ function App() {
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const summary = unpack_archive(bytes);
+      const root =
+        summary.root_directory === ""
+          ? "the archive's top level"
+          : summary.root_directory;
       setStatus(
-        `${summary.file_count} files, ${summary.total_bytes} bytes total`,
+        `export found at ${root}: ${summary.file_count} files, ${summary.total_bytes} bytes total`,
       );
     } catch (error) {
       setStatus(`error: ${String(error)}`);

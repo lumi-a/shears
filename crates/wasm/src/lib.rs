@@ -9,6 +9,7 @@
 )]
 
 use shears_core::archive;
+use shears_core::ingest::find_root_directory;
 use shears_core::rules::RuleSet;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
@@ -26,7 +27,11 @@ pub fn parses_empty_ruleset() -> bool {
 #[derive(Debug)]
 #[wasm_bindgen]
 pub struct ArchiveSummary {
-    /// How many files the archive contains (directories not counted).
+    /// The wrapper directory the export sat in.
+    ///
+    /// Empty if the archive's top level was already the export root.
+    root_directory: String,
+    /// How many files the export contains starting from root (directories not counted).
     file_count: u32,
     /// The combined size of every file's contents in bytes.
     total_bytes: u32,
@@ -38,7 +43,16 @@ pub struct ArchiveSummary {
     reason = "wasm-bindgen exported functions can't be const"
 )]
 impl ArchiveSummary {
-    /// How many files the archive contains (directories not counted).
+    /// The wrapper directory the export sat in.
+    ///
+    /// Empty if the archive's top level was already the export root.
+    #[wasm_bindgen(getter)]
+    #[must_use]
+    pub fn root_directory(&self) -> String {
+        self.root_directory.clone()
+    }
+
+    /// How many files the export contains starting from root (directories not counted).
     #[wasm_bindgen(getter)]
     #[must_use]
     pub fn file_count(&self) -> u32 {
@@ -53,22 +67,26 @@ impl ArchiveSummary {
     }
 }
 
-/// Unpacks `bytes` archive and summarizes what it found.
+/// Unpacks `bytes` archive, finds the export root inside it, and summarizes what it found.
 ///
 /// # Errors
 ///
-/// If `bytes` isn't a recognized archive format, or the archive itself is corrupt. The
-/// error is not yet a structured value. TODO: Should it (*can* it) be?
+/// If `bytes` isn't a recognized archive format, the archive itself is corrupt, or it
+/// doesn't contain exactly one export. The error is not yet a structured value. TODO:
+/// Should it (*can* it) be?
 #[wasm_bindgen]
 pub fn unpack_archive(bytes: &[u8]) -> Result<ArchiveSummary, JsValue> {
-    let files =
+    let unpacked =
         archive::unpack(bytes).map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let (root_directory, files) = find_root_directory::strip(unpacked)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
     let file_count = u32::try_from(files.len()).unwrap_or(u32::MAX);
     let total_bytes_usize: usize = files.iter().map(|file| file.bytes.len()).sum();
     let total_bytes = u32::try_from(total_bytes_usize).unwrap_or(u32::MAX);
 
     Ok(ArchiveSummary {
+        root_directory,
         file_count,
         total_bytes,
     })
