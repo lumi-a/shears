@@ -1,7 +1,6 @@
 //! Unpacks an uploaded `.zip` or `.tar.zst` archive into [`crate::ingest::RawFile`]s.
 
 use std::io::{Cursor, Error as IoError, Read as _};
-use std::path::Path;
 
 use ruzstd::decoding::errors::FrameDecoderError;
 use ruzstd::decoding::StreamingDecoder;
@@ -29,6 +28,31 @@ pub enum UnpackError {
     /// The zip archive itself was malformed.
     #[error("invalid zip archive: {0}")]
     Zip(#[from] ZipError),
+    /// An entry's path contains a `..` component. A KubeJS export should never have one.
+    #[error("archive entry {0:?} has a `..` path component")]
+    ParentDirComponent(String),
+}
+
+/// Turns an archive entry's raw name into a [`RawFile`] path.
+///
+/// Both `/` and `\` count as separators. The zip spec mandates `/` but nothing in an export
+/// should have a literal `\` in a name, so let's just do it this way.
+///
+/// A leading `/` is dropped along with the empty component before it.
+///
+/// # Errors
+///
+/// If any component is `..`, rather than resolving it: a real export never has one.
+fn normalized_path(raw: &str) -> Result<String, UnpackError> {
+    let mut components = Vec::new();
+    for component in raw.split(['/', '\\']) {
+        match component {
+            "" | "." => {}
+            ".." => return Err(UnpackError::ParentDirComponent(raw.to_owned())),
+            normal => components.push(normal),
+        }
+    }
+    Ok(components.join("/"))
 }
 
 /// Unpacks `bytes` (a `.zip` or `.tar.zst` file) into every file it contains.
@@ -49,14 +73,6 @@ pub fn unpack(bytes: &[u8]) -> Result<Vec<RawFile>, UnpackError> {
 
 /// Decompresses `bytes` as a zstd stream and then unpacks the resulting tar stream.
 fn unpack_tar_zst(bytes: &[u8]) -> Result<Vec<RawFile>, UnpackError> {
-    /// Joins `path`'s components with `/` regardless of platform.
-    fn slashed_path(path: &Path) -> String {
-        path.components()
-            .map(|component| component.as_os_str().to_string_lossy())
-            .collect::<Vec<_>>()
-            .join("/")
-    }
-
     let mut decoder = StreamingDecoder::new(bytes)?;
     let mut decompressed = Vec::new();
     let _: usize = decoder.read_to_end(&mut decompressed)?;
@@ -68,7 +84,7 @@ fn unpack_tar_zst(bytes: &[u8]) -> Result<Vec<RawFile>, UnpackError> {
         if !entry.header().entry_type().is_file() {
             continue;
         }
-        let path = slashed_path(&entry.path()?);
+        let path = normalized_path(&String::from_utf8_lossy(&entry.path_bytes()))?;
         let mut contents = Vec::new();
         let _: usize = entry.read_to_end(&mut contents)?;
         files.push(RawFile {
@@ -88,10 +104,7 @@ fn unpack_zip(bytes: &[u8]) -> Result<Vec<RawFile>, UnpackError> {
         if entry.is_dir() {
             continue;
         }
-        // TODO: Should we use `enclosed_name` instead?
-        // https://docs.rs/zip/9.5.1/zip/read/struct.ZipFile.html#method.enclosed_name
-        // Either way, this doesn't guarantee that we get slash-separated paths, right?
-        let path = entry.name()?.into_owned();
+        let path = normalized_path(&entry.name()?)?;
         let mut contents = Vec::new();
         let _: usize = entry.read_to_end(&mut contents)?;
         files.push(RawFile {
@@ -109,7 +122,7 @@ mod tests {
     use zip::write::SimpleFileOptions;
     use zip::CompressionMethod;
 
-    use super::{unpack, UnpackError};
+    use super::{normalized_path, unpack, UnpackError};
 
     /// Builds a `.tar.zst` archive in memory, the same way the committed fixtures were made.
     fn make_tar_zst(files: &[(&str, &[u8])]) -> Vec<u8> {
@@ -231,6 +244,46 @@ mod tests {
             files.len(),
             0,
             "the directory entry shouldn't become a RawFile"
+        );
+    }
+
+    #[test]
+    fn normalized_path_drops_dot_and_empty_components() {
+        assert_eq!(
+            normalized_path("./recipes//minecraft/./dirt.json").ok(),
+            Some("recipes/minecraft/dirt.json".to_owned())
+        );
+        assert_eq!(
+            normalized_path("/index.json").ok(),
+            Some("index.json".to_owned())
+        );
+    }
+
+    #[test]
+    fn normalized_path_treats_backslashes_as_separators() {
+        assert_eq!(
+            normalized_path(r"recipes\minecraft/something\dirt.json").ok(),
+            Some("recipes/minecraft/something/dirt.json".to_owned())
+        );
+    }
+
+    #[test]
+    fn normalized_path_rejects_parent_dir_components() {
+        assert!(matches!(
+            normalized_path("recipes/../../etc/passwd"),
+            Err(UnpackError::ParentDirComponent(_))
+        ));
+    }
+
+    #[test]
+    fn normalizes_backslashes_in_zip_entries() {
+        let bytes = make_zip(&[(r"recipes\minecraft\dirt.json", b"{}")]);
+
+        let files = unpack(&bytes).expect("a valid .zip archive");
+
+        assert_eq!(
+            files.first().expect("one file was unpacked").path,
+            "recipes/minecraft/dirt.json"
         );
     }
 
