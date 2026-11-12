@@ -41,8 +41,8 @@ export class SessionClient {
 
   // Uploads an export archive and ingests it with shapesToml (parsing.toml).
   // Replaces the current session only if this succeeds.
-  async open(file: File, shapesToml: string): Promise<SessionInfo> {
-    const bytes = await file.arrayBuffer();
+  async open(archive: Blob, shapesToml: string): Promise<SessionInfo> {
+    const bytes = await archive.arrayBuffer();
     // Transferred (not copied) because the page doesn't need the bytes afterwards.
     return this.#send({ kind: "open", bytes, shapesToml }, [bytes]);
   }

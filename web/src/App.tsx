@@ -1,11 +1,14 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import { ParseReportView } from "./ParseReportView";
+import { fetchPreset, PRESETS, type FetchedPreset, type Preset } from "./presets";
 import { SessionClient, type SessionInfo } from "./session";
 
 const session = new SessionClient();
 
 function App() {
-  const [busy, setBusy] = createSignal(false);
+  // What's in progress, e.g. "ingesting...". Empty when idle.
+  const [working, setWorking] = createSignal("");
+  const busy = () => working() !== "";
   const [error, setError] = createSignal("");
   const [info, setInfo] = createSignal<SessionInfo>();
   // parsing.toml's contents.
@@ -15,14 +18,14 @@ function App() {
   // Runs one session request, showing its result or its error.
   // If error, the previous result stays up.
   const run = async (request: () => Promise<SessionInfo>) => {
-    setBusy(true);
+    setWorking("ingesting...");
     setError("");
     try {
       setInfo(await request());
     } catch (caught) {
       setError(String(caught));
     } finally {
-      setBusy(false);
+      setWorking("");
     }
   };
 
@@ -42,6 +45,24 @@ function App() {
     if (info() !== undefined) await run(() => session.reingest(toml));
   };
 
+  const onPreset = async (preset: Preset) => {
+    setWorking(`downloading ${preset.name}...`);
+    setError("");
+    let fetched: FetchedPreset;
+    try {
+      fetched = await fetchPreset(preset);
+    } catch (caught) {
+      setError(String(caught));
+      setWorking("");
+      return;
+    }
+    // The preset's parsing.toml replaces whatever was picked before.
+    const { archive, parsingToml } = fetched;
+    setShapesToml(parsingToml);
+    setShapesName(`${preset.name} preset's`);
+    await run(() => session.open(archive, parsingToml));
+  };
+
   const shownRoot = (current: SessionInfo) =>
     current.rootDirectory === ""
       ? "the archive's top level"
@@ -51,8 +72,22 @@ function App() {
     <main>
       <h1>shears</h1>
       <p>
+        try a preset:{" "}
+        <For each={PRESETS}>
+          {(preset) => (
+            <button
+              type="button"
+              disabled={busy()}
+              onClick={() => onPreset(preset)}
+            >
+              {preset.name}
+            </button>
+          )}
+        </For>
+      </p>
+      <p>
         <label>
-          export (.zip or .tar.zst){" "}
+          or upload an export (.zip or .tar.zst){" "}
           <input
             type="file"
             accept=".zip,.tar.zst,.zst"
@@ -76,7 +111,7 @@ function App() {
           : `(using ${shapesName()})`}
       </p>
       <Show when={busy()}>
-        <p>ingesting...</p>
+        <p>{working()}</p>
       </Show>
       <Show when={error() !== ""}>
         <p class="error">error: {error()}</p>
