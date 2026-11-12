@@ -12,10 +12,10 @@
 )]
 
 use shears_core::archive;
-use shears_core::ingest::{self, ParseReport, RawFile, find_root_directory};
+use shears_core::ingest::{self, find_root_directory, ParseReport, RawFile};
 use shears_core::model::Graph;
-use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::JsValue;
 
 /// An error for JS, from anything displayable.
 ///

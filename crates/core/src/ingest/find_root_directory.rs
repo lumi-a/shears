@@ -205,7 +205,7 @@ pub fn strip(files: Vec<RawFile>) -> Result<(String, Vec<RawFile>), RootError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{RootError, strip};
+    use super::{strip, RootError};
     use crate::ingest::RawFile;
 
     /// The least that passes the export check, under `prefix`.
