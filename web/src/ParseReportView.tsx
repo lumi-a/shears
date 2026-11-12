@@ -72,9 +72,9 @@ export function ParseReportView(props: { report: ParseReport }) {
 
   return (
     <section class="parse-report">
-      <h2>
+      <h3>
         Diagnostics ({props.report.diagnostics.length}, {groups().length} kinds)
-      </h2>
+      </h3>
       <For each={groups()}>
         {(group) => (
           <LazyDetails
@@ -89,7 +89,7 @@ export function ParseReportView(props: { report: ParseReport }) {
         )}
       </For>
 
-      <h2>Recipe files</h2>
+      <h3>Recipe files</h3>
       <LazyDetails summary={<>{recipeTypes().length} recipe types</>}>
         <table>
           <thead>

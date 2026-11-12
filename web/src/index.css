@@ -1,8 +1,39 @@
 :root {
   color-scheme: light dark;
+  --divider-width: 6px;
 }
 
 body {
   margin: 0;
   font-family: system-ui, sans-serif;
+}
+
+/*
+The page is exactly one screen.
+Header on top, panes below and each pane scrolls on its own.
+*/
+.app {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100dvh;
+}
+
+.panes {
+  display: grid;
+  /* grid-template-columns is set inline by ThreePanes. */
+}
+
+.pane {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+}
+
+.pane-body {
+  overflow: auto;
+}
+
+.pane-divider {
+  cursor: col-resize;
+  touch-action: none;
 }
