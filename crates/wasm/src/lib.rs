@@ -10,18 +10,8 @@
 
 use shears_core::archive;
 use shears_core::ingest::find_root_directory;
-use shears_core::rules::RuleSet;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
-
-/// Just a placeholder
-///
-/// TODO: Probably delete this and the other placeholder stuffs.
-#[must_use]
-#[wasm_bindgen]
-pub fn parses_empty_ruleset() -> bool {
-    RuleSet::parse("").is_ok()
-}
 
 /// A quick look at what [`unpack_archive`] found, before we start ingest.
 #[derive(Debug)]
