@@ -1,47 +1,98 @@
-import { createSignal } from "solid-js";
-import { SessionClient } from "./session";
+import { createSignal, Show } from "solid-js";
+import { ParseReportView } from "./ParseReportView";
+import { SessionClient, type SessionInfo } from "./session";
 
 const session = new SessionClient();
 
 function App() {
   const [busy, setBusy] = createSignal(false);
-  const [status, setStatus] = createSignal("");
+  const [error, setError] = createSignal("");
+  const [info, setInfo] = createSignal<SessionInfo>();
+  // parsing.toml's contents.
+  const [shapesToml, setShapesToml] = createSignal("");
+  const [shapesName, setShapesName] = createSignal("");
 
-  const onFileChange = async (event: Event) => {
-    const input = event.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) return;
-
+  // Runs one session request, showing its result or its error.
+  // If error, the previous result stays up.
+  const run = async (request: () => Promise<SessionInfo>) => {
     setBusy(true);
-    setStatus("ingesting...");
+    setError("");
     try {
-      const info = await session.open(file, "");
-      const root =
-        info.rootDirectory === ""
-          ? "the archive's top level"
-          : info.rootDirectory;
-      setStatus(
-        `export found at ${root}: ${info.fileCount} files, ` +
-          `${info.itemCount} items, ${info.recipeCount} recipes, ` +
-          `${info.report.diagnostics.length} diagnostics`,
-      );
-    } catch (error) {
-      setStatus(`error: ${String(error)}`);
+      setInfo(await request());
+    } catch (caught) {
+      setError(String(caught));
     } finally {
       setBusy(false);
     }
   };
 
+  const onExportChange = async (event: Event) => {
+    const file = (event.currentTarget as HTMLInputElement).files?.[0];
+    if (!file) return;
+    const toml = shapesToml();
+    await run(() => session.open(file, toml));
+  };
+
+  const onShapesChange = async (event: Event) => {
+    const file = (event.currentTarget as HTMLInputElement).files?.[0];
+    if (!file) return;
+    const toml = await file.text();
+    setShapesToml(toml);
+    setShapesName(file.name);
+    if (info() !== undefined) await run(() => session.reingest(toml));
+  };
+
+  const shownRoot = (current: SessionInfo) =>
+    current.rootDirectory === ""
+      ? "the archive's top level"
+      : current.rootDirectory;
+
   return (
     <main>
       <h1>shears</h1>
-      <input
-        type="file"
-        accept=".zip,.tar.zst,.zst"
-        disabled={busy()}
-        onChange={onFileChange}
-      />
-      <p>{status()}</p>
+      <p>
+        <label>
+          export (.zip or .tar.zst){" "}
+          <input
+            type="file"
+            accept=".zip,.tar.zst,.zst"
+            disabled={busy()}
+            onChange={onExportChange}
+          />
+        </label>
+      </p>
+      <p>
+        <label>
+          parsing.toml{" "}
+          <input
+            type="file"
+            accept=".toml"
+            disabled={busy()}
+            onChange={onShapesChange}
+          />
+        </label>{" "}
+        {shapesName() === ""
+          ? "(none: vanilla recipe types only)"
+          : `(using ${shapesName()})`}
+      </p>
+      <Show when={busy()}>
+        <p>ingesting...</p>
+      </Show>
+      <Show when={error() !== ""}>
+        <p class="error">error: {error()}</p>
+      </Show>
+      <Show when={info()}>
+        {(current) => (
+          <>
+            <p>
+              export found at {shownRoot(current())}: {current().fileCount}{" "}
+              files, {current().itemCount} items, {current().recipeCount}{" "}
+              recipes
+            </p>
+            <ParseReportView report={current().report} />
+          </>
+        )}
+      </Show>
     </main>
   );
 }
