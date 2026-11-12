@@ -1,5 +1,5 @@
 import { createSignal, onMount } from "solid-js";
-import init, { unpack_archive } from "./wasm-pkg/shears_wasm";
+import init, { Session } from "./wasm-pkg/shears_wasm";
 
 function App() {
   const [ready, setReady] = createSignal(false);
@@ -15,17 +15,19 @@ function App() {
     const file = input.files?.[0];
     if (!file) return;
 
-    setStatus("unpacking...");
+    setStatus("ingesting...");
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const summary = unpack_archive(bytes);
+      const session = Session.open(bytes, "");
       const root =
-        summary.root_directory === ""
+        session.root_directory === ""
           ? "the archive's top level"
-          : summary.root_directory;
+          : session.root_directory;
       setStatus(
-        `export found at ${root}: ${summary.file_count} files, ${summary.total_bytes} bytes total`,
+        `export found at ${root}: ${session.file_count} files, ` +
+          `${session.item_count} items, ${session.recipe_count} recipes`,
       );
+      session.free();
     } catch (error) {
       setStatus(`error: ${String(error)}`);
     }

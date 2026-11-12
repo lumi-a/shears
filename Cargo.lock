@@ -995,6 +995,7 @@ dependencies = [
 name = "shears-wasm"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "shears-core",
  "wasm-bindgen",
 ]
