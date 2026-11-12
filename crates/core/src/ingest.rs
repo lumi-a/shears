@@ -22,6 +22,7 @@ mod vanilla;
 use core::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 
+use serde::Serialize;
 use serde_json::Value;
 
 use self::ingredient::Leaf;
@@ -44,7 +45,7 @@ pub struct RawFile {
 }
 
 /// A problem noticed while ingesting.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Diagnostic {
     /// A short label for whatever this concerns.
     ///
@@ -57,7 +58,7 @@ pub struct Diagnostic {
 }
 
 /// Summary of what ingest did.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct ParseReport {
     /// One diagnostic per problem.
     pub diagnostics: Vec<Diagnostic>,
