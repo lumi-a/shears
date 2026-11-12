@@ -163,6 +163,7 @@ textarea {
 
 .panes {
   display: grid;
+  grid-template-rows: minmax(0, 1fr);
   /* grid-template-columns is set inline by ThreePanes. */
 }
 
