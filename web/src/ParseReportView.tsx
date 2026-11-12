@@ -80,7 +80,8 @@ export function ParseReportView(props: { report: ParseReport }) {
           <LazyDetails
             summary={
               <>
-                <span class="count">{group.abouts.length}</span> {group.message}
+                <span class="count">{group.abouts.length}</span>
+                <span class="label">{group.message}</span>
               </>
             }
           >
@@ -90,7 +91,14 @@ export function ParseReportView(props: { report: ParseReport }) {
       </For>
 
       <h3>Recipe files</h3>
-      <LazyDetails summary={<>{recipeTypes().length} recipe types</>}>
+      <LazyDetails
+        summary={
+          <>
+            <span class="count">{recipeTypes().length}</span>
+            <span class="label">recipe types</span>
+          </>
+        }
+      >
         <table>
           <thead>
             <tr>
@@ -113,8 +121,12 @@ export function ParseReportView(props: { report: ParseReport }) {
       <LazyDetails
         summary={
           <>
-            {props.report.registered_but_unreferenced.length} registered ids no
-            recipe or tag references
+            <span class="count">
+              {props.report.registered_but_unreferenced.length}
+            </span>
+            <span class="label">
+              registered ids no recipe or tag references
+            </span>
           </>
         }
       >

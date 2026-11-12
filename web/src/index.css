@@ -260,8 +260,32 @@ h3 {
 }
 
 .parse-report summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
   padding-block: var(--space-1);
+  padding-left: var(--space-1);
   cursor: pointer;
+  /* display: flex should already drops the default triangle, but be safe. */
+  list-style: none;
+}
+
+.parse-report summary::-webkit-details-marker {
+  display: none;
+}
+
+.parse-report summary::before {
+  flex: none;
+  width: 0.4em;
+  height: 0.4em;
+  border-right: 1.5px solid var(--fg-muted);
+  border-bottom: 1.5px solid var(--fg-muted);
+  content: "";
+  transform: translateY(-0.15em) rotate(-45deg);
+}
+
+.parse-report details[open] > summary::before {
+  transform: translateY(-0.3em) rotate(45deg);
 }
 
 .parse-report summary:hover {
@@ -269,9 +293,12 @@ h3 {
 }
 
 .parse-report summary .count {
-  display: inline-block;
-  margin-right: var(--space-2);
+  flex: none;
   color: var(--fg-muted);
+}
+
+.parse-report summary .label {
+  min-width: 0;
 }
 
 .count {
