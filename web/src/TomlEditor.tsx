@@ -1,14 +1,33 @@
+import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
+  bracketMatching,
   HighlightStyle,
   StreamLanguage,
   syntaxHighlighting,
 } from "@codemirror/language";
 import { toml } from "@codemirror/legacy-modes/mode/toml";
 import { EditorState } from "@codemirror/state";
-import { EditorView, placeholder } from "@codemirror/view";
+import {
+  drawSelection,
+  dropCursor,
+  EditorView,
+  highlightActiveLine,
+  highlightSpecialChars,
+  keymap,
+  placeholder,
+} from "@codemirror/view";
 import { tags } from "@lezer/highlight";
-import { basicSetup } from "codemirror";
 import { createEffect, onCleanup, onMount } from "solid-js";
+
+const setup = [
+  highlightSpecialChars(),
+  history(),
+  drawSelection(),
+  dropCursor(),
+  bracketMatching(),
+  highlightActiveLine(),
+  keymap.of([...defaultKeymap, ...historyKeymap]),
+];
 
 // Colours come from CSS variables (see index.css).
 const theme = EditorView.theme({
@@ -28,7 +47,6 @@ const theme = EditorView.theme({
     borderRight: "1px solid var(--border)",
   },
   ".cm-activeLine": { backgroundColor: "var(--editor-active-line)" },
-  ".cm-activeLineGutter": { backgroundColor: "var(--bg-hover)" },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground":
     { backgroundColor: "var(--editor-selection)" },
   ".cm-placeholder": { color: "var(--fg-muted)" },
@@ -66,7 +84,7 @@ export function TomlEditor(props: {
       state: EditorState.create({
         doc: props.value,
         extensions: [
-          basicSetup,
+          setup,
           tomlLanguage,
           syntaxHighlighting(highlighting),
           theme,
