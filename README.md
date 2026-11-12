@@ -1,6 +1,9 @@
+<img src="https://raw.githubusercontent.com/lumi-a/shears/main/shears.png" alt="Shears logo." width="96" align="right">
+
 Eliminate unneeded recipes in KubeJS Minecraft Modpacks.
 
 ## todos
+
 - Add more manifest information
 - Add more README information, e.g. badges and links to docs, once up
 - Block-quote License and Conribution sections in README?
@@ -28,7 +31,6 @@ Eliminate unneeded recipes in KubeJS Minecraft Modpacks.
 This applies to shears' own source code. Some fixtures under `fixtures/`
 are recipe/modpack data treated under separate terms instead. See
 [fixtures/README.md](fixtures/README.md) for what and why.
-
 
 ## Contribution
 
