@@ -1,46 +1,44 @@
-import { createSignal, onMount } from "solid-js";
-import init, { Session } from "./wasm-pkg/shears_wasm";
+import { createSignal } from "solid-js";
+import { SessionClient } from "./session";
+
+const session = new SessionClient();
 
 function App() {
-  const [ready, setReady] = createSignal(false);
+  const [busy, setBusy] = createSignal(false);
   const [status, setStatus] = createSignal("");
-
-  onMount(async () => {
-    await init();
-    setReady(true);
-  });
 
   const onFileChange = async (event: Event) => {
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
 
+    setBusy(true);
     setStatus("ingesting...");
     try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const session = Session.open(bytes, "");
+      const info = await session.open(file, "");
       const root =
-        session.root_directory === ""
+        info.rootDirectory === ""
           ? "the archive's top level"
-          : session.root_directory;
+          : info.rootDirectory;
       setStatus(
-        `export found at ${root}: ${session.file_count} files, ` +
-          `${session.item_count} items, ${session.recipe_count} recipes`,
+        `export found at ${root}: ${info.fileCount} files, ` +
+          `${info.itemCount} items, ${info.recipeCount} recipes, ` +
+          `${info.report.diagnostics.length} diagnostics`,
       );
-      session.free();
     } catch (error) {
       setStatus(`error: ${String(error)}`);
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
     <main>
       <h1>shears</h1>
-      <p>{ready() ? "wasm ready" : "loading wasm..."}</p>
       <input
         type="file"
         accept=".zip,.tar.zst,.zst"
-        disabled={!ready()}
+        disabled={busy()}
         onChange={onFileChange}
       />
       <p>{status()}</p>
