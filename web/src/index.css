@@ -10,6 +10,15 @@
   --accent: light-dark(#2f5fd0, #7aa2ff);
   --error: light-dark(#b42318, #ff8a80);
 
+  /* TOML editor */
+  --editor-active-line: light-dark(#f7f7f8, #202023);
+  --editor-selection: light-dark(#cbd8f5, #34405c);
+  --syntax-comment: var(--fg-muted);
+  --syntax-key: light-dark(#7a3e9d, #d2a8ff);
+  --syntax-header: var(--accent);
+  --syntax-string: light-dark(#2b7a3d, #9ad48a);
+  --syntax-number: light-dark(#a35200, #ffb070);
+
   --font-ui: system-ui, sans-serif;
   --font-mono:
     ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
@@ -36,6 +45,11 @@
 
 * {
   margin: 0;
+}
+
+/* Otherwise any `display` rule on an element would unhide it. */
+[hidden] {
+  display: none !important;
 }
 
 body {
@@ -347,6 +361,60 @@ h3 {
    Rules pane
 *****************************************************************/
 
-.toml-input {
-  min-height: 8rem;
+/* The editors fill the pane edge to edge instead of scrolling inside its padding. */
+.pane-body:has(> .rules-pane) {
+  overflow: hidden;
+  padding: 0;
+}
+
+.rules-pane {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.tabs button {
+  border: none;
+  border-right: 1px solid var(--border);
+  background: none;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+}
+
+.tabs button:hover {
+  color: var(--fg);
+}
+
+/* The selected tab's underline sits on the tab bar's own bottom border. */
+.tabs button[aria-selected="true"] {
+  margin-bottom: -1px;
+  border-bottom: 2px solid var(--accent);
+  color: var(--fg);
+}
+
+.tabs .download {
+  margin-left: auto;
+  border-right: none;
+  border-left: 1px solid var(--border);
+  font-family: var(--font-ui);
+}
+
+.tab-panels,
+.tab-panel {
+  min-height: 0;
+  height: 100%;
+}
+
+.rules-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-top: 1px solid var(--border);
 }

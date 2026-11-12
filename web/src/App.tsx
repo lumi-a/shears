@@ -1,5 +1,6 @@
 import { createSignal, For, onMount, Show } from "solid-js";
 import { ParseReportView } from "./ParseReportView";
+import { RulesPane } from "./RulesPane";
 import {
   fetchPreset,
   PRESETS,
@@ -23,6 +24,8 @@ function App() {
   const [appliedShapesToml, setAppliedShapesToml] = createSignal("");
   const shapesChanged = () =>
     info() !== undefined && shapesToml() !== appliedShapesToml();
+  // rules.toml's contents, not used by analysis yet.
+  const [rulesToml, setRulesToml] = createSignal("");
   let openExport!: HTMLDivElement;
 
   // Nothing to show until an export is open. We offer one instead.
@@ -83,32 +86,15 @@ function App() {
     `${current.recipeCount} recipes`;
 
   const rulesPane = (
-    <>
-      <h3>
-        <label for="parsing-toml">parsing.toml</label>
-      </h3>
-      <p class="hint">How to parse recipe types that aren't vanilla.</p>
-      <textarea
-        id="parsing-toml"
-        class="toml-input"
-        spellcheck={false}
-        value={shapesToml()}
-        onInput={(event) => setShapesToml(event.currentTarget.value)}
-      />
-      <p>
-        <button
-          type="button"
-          disabled={busy() || !shapesChanged()}
-          onClick={onApplyShapes}
-        >
-          Re-ingest
-        </button>{" "}
-        <Show when={shapesChanged()}>
-          <span class="hint">changed since the last ingest</span>
-        </Show>
-      </p>
-      <p class="placeholder">The rules.toml editor WIP.</p>
-    </>
+    <RulesPane
+      rulesToml={rulesToml()}
+      setRulesToml={setRulesToml}
+      shapesToml={shapesToml()}
+      setShapesToml={setShapesToml}
+      shapesChanged={shapesChanged()}
+      busy={busy()}
+      onReingest={onApplyShapes}
+    />
   );
 
   const reportPane = (
