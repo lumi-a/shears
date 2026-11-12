@@ -1,21 +1,150 @@
 :root {
   color-scheme: light dark;
+
+  --bg: light-dark(#ffffff, #1b1b1d);
+  --bg-subtle: light-dark(#f4f4f5, #232326);
+  --bg-hover: light-dark(#e7e7ea, #2e2e32);
+  --fg: light-dark(#1b1b1d, #e6e6e8);
+  --fg-muted: light-dark(#6b6b73, #9a9aa3);
+  --border: light-dark(#d6d6db, #3a3a40);
+  --accent: light-dark(#2f5fd0, #7aa2ff);
+  --error: light-dark(#b42318, #ff8a80);
+
+  --font-ui: system-ui, sans-serif;
+  --font-mono:
+    ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+  --font-size: 0.875rem;
+  --font-size-small: 0.8125rem;
+
+  --space-1: 0.125rem;
+  --space-2: 0.25rem;
+  --space-3: 0.5rem;
+  --space-4: 0.75rem;
+
   --divider-width: 6px;
 }
 
-body {
-  margin: 0;
-  font-family: system-ui, sans-serif;
+/****************************************************************
+    The usual boilerplate, so browsers start from the same place.
+*****************************************************************/
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
-/*
-The page is exactly one screen.
-Header on top, panes below and each pane scrolls on its own.
-*/
+* {
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: var(--font-size);
+  line-height: 1.4;
+  color: var(--fg);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+img,
+svg,
+video,
+canvas {
+  display: block;
+  max-width: 100%;
+}
+
+input,
+button,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+h1,
+h2,
+h3,
+p {
+  overflow-wrap: break-word;
+}
+
+code,
+pre,
+textarea {
+  font-family: var(--font-mono);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/****************************************************************
+    Controls
+*****************************************************************/
+
+button {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--bg-subtle);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+textarea {
+  display: block;
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--bg);
+  font-size: var(--font-size-small);
+  resize: vertical;
+}
+
+/****************************************************************
+   Layout
+*****************************************************************/
+
 .app {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   height: 100dvh;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header h1 {
+  font-size: 1rem;
+}
+
+.status {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status.error {
+  color: var(--error);
 }
 
 .panes {
@@ -29,11 +158,168 @@ Header on top, panes below and each pane scrolls on its own.
   min-width: 0;
 }
 
+.pane-title {
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--fg-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
 .pane-body {
   overflow: auto;
+  padding: var(--space-2);
 }
 
 .pane-divider {
+  background: linear-gradient(var(--border), var(--border)) center / 1px 100%
+    no-repeat;
   cursor: col-resize;
   touch-action: none;
+}
+
+.pane-divider:hover,
+.pane-divider:focus-visible,
+.pane-divider:active {
+  outline: none;
+  background-image: linear-gradient(var(--accent), var(--accent));
+  background-size: 2px 100%;
+}
+
+/****************************************************************
+   Text
+*****************************************************************/
+
+h2,
+h3 {
+  font-size: var(--font-size);
+  font-weight: 600;
+}
+
+.pane-body h3 {
+  margin-block: var(--space-4) var(--space-2);
+}
+
+.pane-body > :first-child,
+.pane-body > :first-child > :first-child {
+  margin-top: 0;
+}
+
+.pane-body p {
+  margin-block: var(--space-2);
+}
+
+.hint,
+.placeholder {
+  color: var(--fg-muted);
+}
+
+.hint {
+  font-size: var(--font-size-small);
+}
+
+/****************************************************************
+   Open-export popover.
+*****************************************************************/
+
+.open-export {
+  width: min(32rem, calc(100vw - 2 * var(--space-4)));
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.open-export::backdrop {
+  background: rgb(0 0 0 / 0.333);
+}
+
+.open-export h2 {
+  font-size: 1rem;
+}
+
+.open-export h3 {
+  margin-block: var(--space-4) var(--space-2);
+}
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/****************************************************************
+   Parsing report
+*****************************************************************/
+
+.parse-report details {
+  border-bottom: 1px solid var(--border);
+}
+
+.parse-report summary {
+  padding-block: var(--space-1);
+  cursor: pointer;
+}
+
+.parse-report summary:hover {
+  background: var(--bg-subtle);
+}
+
+.parse-report summary .count {
+  display: inline-block;
+  margin-right: var(--space-2);
+  color: var(--fg-muted);
+}
+
+.count {
+  font-variant-numeric: tabular-nums;
+}
+
+.parse-report ul {
+  margin-block: 0 var(--space-2);
+  padding-left: 1.5rem;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  overflow: auto;
+}
+
+.parse-report ul > li {
+  white-space: nowrap;
+}
+
+.parse-report .more {
+  font-family: var(--font-ui);
+  color: var(--fg-muted);
+}
+
+.parse-report table {
+  margin-block: var(--space-1) var(--space-2);
+  border-collapse: collapse;
+  font-size: var(--font-size-small);
+}
+
+.parse-report th,
+.parse-report td {
+  padding: 0.125rem var(--space-2);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.parse-report td:first-child {
+  font-family: var(--font-mono);
+}
+
+.parse-report td.count {
+  text-align: right;
+}
+
+/****************************************************************
+   Rules pane
+*****************************************************************/
+
+.toml-input {
+  min-height: 8rem;
 }

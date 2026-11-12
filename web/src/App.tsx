@@ -87,10 +87,7 @@ function App() {
       <h3>
         <label for="parsing-toml">parsing.toml</label>
       </h3>
-      <p class="hint">
-        How to read recipe types beyond vanilla's. Paste yours here; empty means
-        vanilla recipe types only.
-      </p>
+      <p class="hint">How to parse recipe types that aren't vanilla.</p>
       <textarea
         id="parsing-toml"
         class="toml-input"
@@ -156,8 +153,6 @@ function App() {
         popover
         ref={(element) => (openExport = element)}
       >
-        <h2>Open an Export</h2>
-        <p class="hint">Everything's processed locally, nothing's uploaded.</p>
         <h3>Open a preset</h3>
         <p class="presets">
           <For each={PRESETS}>
@@ -173,6 +168,10 @@ function App() {
           </For>
         </p>
         <h3>Open your own export</h3>
+        <p class="hint">
+          These won't get sent to a server, they're processed locally in your
+          browser.
+        </p>
         <p>
           <label>
             <code>/kubejs export</code> as .zip or .tar.zst{" "}

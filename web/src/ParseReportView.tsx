@@ -73,7 +73,7 @@ export function ParseReportView(props: { report: ParseReport }) {
   return (
     <section class="parse-report">
       <h3>
-        Diagnostics ({props.report.diagnostics.length}, {groups().length} kinds)
+        Diagnostics ({props.report.diagnostics.length} across {groups().length})
       </h3>
       <For each={groups()}>
         {(group) => (
