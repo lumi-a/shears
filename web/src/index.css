@@ -146,7 +146,15 @@ textarea {
 }
 
 .app-header h1 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   font-size: 1rem;
+}
+
+.logo {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .status {

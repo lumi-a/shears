@@ -120,7 +120,14 @@ function App() {
   return (
     <div class="app">
       <header class="app-header">
-        <h1>shears</h1>
+        <h1>
+          <img
+            class="logo"
+            src={`${import.meta.env.BASE_URL}favicon.svg`}
+            alt=""
+          />
+          shears
+        </h1>
         <button type="button" popovertarget="open-export" disabled={busy()}>
           Open export...
         </button>

@@ -1,10 +1,10 @@
 # Recipe shapes this crate ships with by default.
 
 [recipe_to_shape]
-# Exact recipe type -> shape name, Takes priority over `namespaces`.
+# Exact recipe type -> shape name. Takes priority over `namespaces`.
 types = {}
 
-# Recipe type namespace -> shape name, used when `types` has no exact entry.
+# Recipe type namespace -> shape name. Used when `types` has no exact entry.
 namespaces = { gtceu = "gtceu-machine", enderio = "enderio-flat", nuclearcraft = "nuclearcraft-flat" }
 
 [shape.gtceu-machine]
