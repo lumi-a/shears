@@ -8,7 +8,7 @@ import {
   type Preset,
 } from "./presets";
 import { SessionClient, type SessionInfo } from "./session";
-import { ThreePanes } from "./ThreePanes";
+import { Pane, Split } from "./Split";
 
 const session = new SessionClient();
 
@@ -178,12 +178,20 @@ function App() {
         </p>
       </div>
 
-      <ThreePanes
-        panes={[
-          { title: "Rules", body: rulesPane },
-          { title: "Report", body: reportPane },
-          { title: "Explorer", body: explorerPane },
-        ]}
+      <Split
+        direction="columns"
+        storageKey="shears.split.main"
+        initial={0.4}
+        first={<Pane title="Rules">{rulesPane}</Pane>}
+        second={
+          <Split
+            direction="rows"
+            storageKey="shears.split.right"
+            initial={0.5}
+            first={<Pane title="Report">{reportPane}</Pane>}
+            second={<Pane title="Explorer">{explorerPane}</Pane>}
+          />
+        }
       />
     </div>
   );

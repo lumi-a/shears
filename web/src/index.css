@@ -169,16 +169,25 @@ textarea {
   color: var(--error);
 }
 
-.panes {
+.split {
   display: grid;
+  min-width: 0;
+  min-height: 0;
+}
+
+.split.columns {
   grid-template-rows: minmax(0, 1fr);
-  /* grid-template-columns is set inline by ThreePanes. */
+}
+
+.split.rows {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .pane {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
+  min-height: 0;
 }
 
 .pane-title {
@@ -197,19 +206,34 @@ textarea {
   padding: var(--space-2);
 }
 
-.pane-divider {
-  background: linear-gradient(var(--border), var(--border)) center / 1px 100%
-    no-repeat;
-  cursor: col-resize;
+.split-divider {
+  background: linear-gradient(var(--border), var(--border)) center no-repeat;
   touch-action: none;
 }
 
-.pane-divider:hover,
-.pane-divider:focus-visible,
-.pane-divider:active {
+.columns > .split-divider {
+  background-size: 1px 100%;
+  cursor: col-resize;
+}
+
+.rows > .split-divider {
+  background-size: 100% 1px;
+  cursor: row-resize;
+}
+
+.split-divider:hover,
+.split-divider:focus-visible,
+.split-divider:active {
   outline: none;
   background-image: linear-gradient(var(--accent), var(--accent));
+}
+
+.columns > .split-divider:is(:hover, :focus-visible, :active) {
   background-size: 2px 100%;
+}
+
+.rows > .split-divider:is(:hover, :focus-visible, :active) {
+  background-size: 100% 2px;
 }
 
 /****************************************************************
