@@ -17,21 +17,28 @@ function App() {
   const busy = () => working() !== "";
   const [error, setError] = createSignal("");
   const [info, setInfo] = createSignal<SessionInfo>();
-  // parsing.toml's contents.
+  // parsing.toml's contents as edited, and as last successfully ingested with.
+  // Empty is valid: only vanilla recipe types then.
   const [shapesToml, setShapesToml] = createSignal("");
-  const [shapesName, setShapesName] = createSignal("");
+  const [appliedShapesToml, setAppliedShapesToml] = createSignal("");
+  const shapesChanged = () =>
+    info() !== undefined && shapesToml() !== appliedShapesToml();
   let openExport!: HTMLDivElement;
 
   // Nothing to show until an export is open. We offer one instead.
   onMount(() => openExport.showPopover());
 
-  // Runs one session request, showing its result or its error.
-  // If error, the previous result stays up.
-  const run = async (request: () => Promise<SessionInfo>) => {
+  // Runs one session request that ingests with `toml`, showing its result or
+  // its error. If error, the previous result stays up.
+  const run = async (
+    toml: string,
+    request: (toml: string) => Promise<SessionInfo>,
+  ) => {
     setWorking("ingesting...");
     setError("");
     try {
-      setInfo(await request());
+      setInfo(await request(toml));
+      setAppliedShapesToml(toml);
     } catch (caught) {
       setError(String(caught));
     } finally {
@@ -46,18 +53,11 @@ function App() {
     input.value = "";
     if (!file) return;
     openExport.hidePopover();
-    const toml = shapesToml();
-    await run(() => session.open(file, toml));
+    await run(shapesToml(), (toml) => session.open(file, toml));
   };
 
-  const onShapesChange = async (event: Event) => {
-    const file = (event.currentTarget as HTMLInputElement).files?.[0];
-    if (!file) return;
-    const toml = await file.text();
-    setShapesToml(toml);
-    setShapesName(file.name);
-    if (info() !== undefined) await run(() => session.reingest(toml));
-  };
+  const onApplyShapes = () =>
+    run(shapesToml(), (toml) => session.reingest(toml));
 
   const onPreset = async (preset: Preset) => {
     openExport.hidePopover();
@@ -74,8 +74,7 @@ function App() {
     // The preset's parsing.toml replaces whatever was picked before.
     const { archive, parsingToml } = fetched;
     setShapesToml(parsingToml);
-    setShapesName(`${preset.name} preset's`);
-    await run(() => session.open(archive, parsingToml));
+    await run(parsingToml, (toml) => session.open(archive, toml));
   };
 
   const summary = (current: SessionInfo) =>
@@ -85,21 +84,31 @@ function App() {
 
   const rulesPane = (
     <>
-      <p>
-        <label>
-          parsing.toml{" "}
-          <input
-            type="file"
-            accept=".toml"
-            disabled={busy()}
-            onChange={onShapesChange}
-          />
-        </label>
-      </p>
+      <h3>
+        <label for="parsing-toml">parsing.toml</label>
+      </h3>
       <p class="hint">
-        {shapesName() === ""
-          ? "None yet: vanilla recipe types only."
-          : `Using ${shapesName()}.`}
+        How to read recipe types beyond vanilla's. Paste yours here; empty means
+        vanilla recipe types only.
+      </p>
+      <textarea
+        id="parsing-toml"
+        class="toml-input"
+        spellcheck={false}
+        value={shapesToml()}
+        onInput={(event) => setShapesToml(event.currentTarget.value)}
+      />
+      <p>
+        <button
+          type="button"
+          disabled={busy() || !shapesChanged()}
+          onClick={onApplyShapes}
+        >
+          Re-ingest
+        </button>{" "}
+        <Show when={shapesChanged()}>
+          <span class="hint">changed since the last ingest</span>
+        </Show>
       </p>
       <p class="placeholder">The rules.toml editor WIP.</p>
     </>
