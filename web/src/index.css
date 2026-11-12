@@ -406,7 +406,8 @@ h3 {
 }
 
 .tab-panels,
-.tab-panel {
+.tab-panel,
+.toml-editor {
   min-height: 0;
   height: 100%;
 }
