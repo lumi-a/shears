@@ -85,6 +85,7 @@ export function TomlEditor(props: {
         doc: props.value,
         extensions: [
           setup,
+          EditorView.lineWrapping,
           tomlLanguage,
           syntaxHighlighting(highlighting),
           theme,

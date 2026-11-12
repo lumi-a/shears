@@ -370,6 +370,8 @@ h3 {
 .rules-pane {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
+  /* Otherwise the column grows to fit the tabs, and they never shrink. */
+  grid-template-columns: minmax(0, 1fr);
   height: 100%;
 }
 
@@ -378,9 +380,14 @@ h3 {
   border-bottom: 1px solid var(--border);
 }
 
+/* Tabs shrink with an ellipsis when the pane gets narrow. */
 .tabs button {
+  min-width: 0;
+  overflow: hidden;
   border: none;
   border-right: 1px solid var(--border);
+  white-space: nowrap;
+  text-overflow: ellipsis;
   background: none;
   color: var(--fg-muted);
   font-family: var(--font-mono);
@@ -399,6 +406,7 @@ h3 {
 }
 
 .tabs .download {
+  flex: none;
   margin-left: auto;
   border-right: none;
   border-left: 1px solid var(--border);
