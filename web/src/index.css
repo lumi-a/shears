@@ -30,7 +30,7 @@
   --space-3: 0.5rem;
   --space-4: 0.75rem;
 
-  --divider-width: 6px;
+  --divider-width: 1px;
 }
 
 /****************************************************************
@@ -206,34 +206,40 @@ textarea {
   padding: var(--space-2);
 }
 
+/* Divider stuff */
 .split-divider {
-  background: linear-gradient(var(--border), var(--border)) center no-repeat;
+  position: relative;
+  z-index: 1;
+  background: var(--border);
   touch-action: none;
 }
 
+.split-divider::before {
+  position: absolute;
+  content: "";
+}
+
 .columns > .split-divider {
-  background-size: 1px 100%;
   cursor: col-resize;
 }
 
+.columns > .split-divider::before {
+  inset: 0 -5px 0 -1px;
+}
+
 .rows > .split-divider {
-  background-size: 100% 1px;
   cursor: row-resize;
+}
+
+.rows > .split-divider::before {
+  inset: -1px 0 -5px 0;
 }
 
 .split-divider:hover,
 .split-divider:focus-visible,
 .split-divider:active {
   outline: none;
-  background-image: linear-gradient(var(--accent), var(--accent));
-}
-
-.columns > .split-divider:is(:hover, :focus-visible, :active) {
-  background-size: 2px 100%;
-}
-
-.rows > .split-divider:is(:hover, :focus-visible, :active) {
-  background-size: 100% 2px;
+  background: var(--accent);
 }
 
 /****************************************************************
