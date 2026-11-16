@@ -11,6 +11,8 @@
               exported functions, and emits its own warning if added"
 )]
 
+use std::collections::BTreeSet;
+
 use serde::Serialize;
 use shears_core::analysis::edges::{EdgeStates, NodeAttrs};
 use shears_core::analysis::transitively_required::transitively_required;
@@ -39,6 +41,57 @@ struct Analysis {
     transitively_required_recipe_count: usize,
     /// Things in the rules that parsed fine but are probably mistakes.
     warnings: Vec<String>,
+    /// What changed since the previous analysis, `None` for the first one.
+    diff: Option<Diff>,
+}
+
+/// What one analysis found transitively required.
+///
+/// By id rather than index, because we want to be able to compare this after re-ingestion.
+///
+/// TODO: If we want to be clever and save memory (e.g. because we assume the diff will always
+/// be small?), we could instead do some hash-stuff shenanigans. Something like a hash set, but
+/// without storing the underlying data unless there is a hash conflict. That sounds rough
+/// though. Also makes resizing the hash set very costly, though I suppose we would know the
+/// size upfront.
+#[derive(Debug)]
+struct Snapshot {
+    /// Ids of the transitively required items.
+    items: BTreeSet<String>,
+    /// Ids of the recipes that propagate.
+    recipes: BTreeSet<String>,
+}
+
+/// The difference between two [`Snapshot`]s.
+///
+/// Every list is sorted the same way [`Snapshot`] is sorted, i.e. the way strings are totally
+/// ordered in Rust.
+#[derive(Debug, Serialize)]
+struct Diff {
+    /// Items that are transitively required now, but weren't before.
+    items_added: Vec<String>,
+    /// Items that were transitively required before, but aren't now.
+    items_removed: Vec<String>,
+    /// Recipes that propagate now, but didn't before.
+    recipes_added: Vec<String>,
+    /// Recipes that propagated before, but don't now.
+    recipes_removed: Vec<String>,
+}
+
+impl Diff {
+    /// What changed from `before` to `now`.
+    fn between(before: &Snapshot, now: &Snapshot) -> Self {
+        /// The ids in `now` but not in `before`. Maintains the order.
+        fn added(before: &BTreeSet<String>, now: &BTreeSet<String>) -> Vec<String> {
+            now.difference(before).cloned().collect()
+        }
+        Self {
+            items_added: added(&before.items, &now.items),
+            items_removed: added(&now.items, &before.items),
+            recipes_added: added(&before.recipes, &now.recipes),
+            recipes_removed: added(&now.recipes, &before.recipes),
+        }
+    }
 }
 
 /// One uploaded export, consisting of its files and the graph ingested from them.
@@ -55,6 +108,8 @@ pub struct Session {
     graph: Graph,
     /// The parse report from the latest successful ingest.
     report: ParseReport,
+    /// What the latest successful analysis found. Used to diff against the next.
+    previous: Option<Snapshot>,
 }
 
 #[wasm_bindgen]
@@ -81,6 +136,7 @@ impl Session {
             files,
             graph,
             report,
+            previous: None,
         })
     }
 
@@ -136,21 +192,38 @@ impl Session {
 
     /// Applies `rules_toml` to the current graph and works out what's transitively required.
     ///
+    /// Diffs the result against the previous successful analysis.
+    ///
     /// # Errors
     ///
     /// If `rules_toml` isn't a valid rules file.
-    pub fn analyze_json(&self, rules_toml: &str) -> Result<String, JsValue> {
+    pub fn analyze_json(&mut self, rules_toml: &str) -> Result<String, JsValue> {
         let rules = RuleSet::parse(rules_toml).map_err(|error| js_error(&error))?;
         let mut attrs = NodeAttrs::defaults(&self.graph);
         let mut edges = EdgeStates::defaults(&self.graph);
         rules.apply(&self.graph, &mut attrs, &mut edges, 0);
         let live = transitively_required(&self.graph, &attrs, &edges);
+        let snapshot = Snapshot {
+            items: live
+                .transitively_required_items()
+                .map(|item| self.graph.item(item).id().to_owned())
+                .collect(),
+            recipes: live
+                .transitively_required_recipes()
+                .map(|recipe| self.graph.recipe(recipe).id().to_owned())
+                .collect(),
+        };
         let analysis = Analysis {
             required_count: attrs.required_items().count(),
             transitively_required_item_count: live.transitively_required_item_count(),
             transitively_required_recipe_count: live.transitively_required_recipe_count(),
             warnings: rules.warnings().to_vec(),
+            diff: self
+                .previous
+                .as_ref()
+                .map(|previous| Diff::between(previous, &snapshot)),
         };
+        self.previous = Some(snapshot);
         serde_json::to_string(&analysis).map_err(|error| js_error(&error))
     }
 }
