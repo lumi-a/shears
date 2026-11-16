@@ -4,6 +4,13 @@ import { TomlEditor } from "./TomlEditor";
 type Tab = "rules.toml" | "parsing.toml";
 const TABS: Tab[] = ["rules.toml", "parsing.toml"];
 
+const RULES_PLACEHOLDER = `# Which items are needed. For example:
+#
+# [[item-rule]]
+# reason = "the pack's goal"
+# filter = { id = "gtceu:creative_chest" }
+# action = { required = true }`;
+
 // Saves `text` as a file called `name` through the browser's download.
 function download(name: string, text: string) {
   const url = URL.createObjectURL(
@@ -25,10 +32,15 @@ export function RulesPane(props: {
   setShapesToml: (value: string) => void;
   // parsing.toml differs from what the current report was ingested with.
   shapesChanged: boolean;
+  // rules.toml differs from what the current analysis ran with.
+  rulesChanged: boolean;
   busy: boolean;
+  // Whether there's an export to analyze.
+  canAnalyze: boolean;
   onReingest: () => void;
+  onAnalyze: () => void;
 }) {
-  const [tab, setTab] = createSignal<Tab>("parsing.toml");
+  const [tab, setTab] = createSignal<Tab>("rules.toml");
   const textOf = (name: Tab) =>
     name === "rules.toml" ? props.rulesToml : props.shapesToml;
 
@@ -68,7 +80,7 @@ export function RulesPane(props: {
         >
           <TomlEditor
             label="rules.toml"
-            placeholder="# Which items and recipes to keep or drop. Not used yet: analysis comes in a later step."
+            placeholder={RULES_PLACEHOLDER}
             value={props.rulesToml}
             onChange={(value) => props.setRulesToml(value)}
           />
@@ -92,7 +104,20 @@ export function RulesPane(props: {
       <div class="rules-actions">
         <Show
           when={tab() === "parsing.toml"}
-          fallback={<span class="hint">Not used yet.</span>}
+          fallback={
+            <>
+              <button
+                type="button"
+                disabled={props.busy || !props.canAnalyze}
+                onClick={() => props.onAnalyze()}
+              >
+                Analyze
+              </button>
+              <Show when={props.rulesChanged}>
+                <span class="hint">changed since the last analysis</span>
+              </Show>
+            </>
+          }
         >
           <button
             type="button"

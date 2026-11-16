@@ -1,4 +1,5 @@
 import { createSignal, For, onMount, Show } from "solid-js";
+import { AnalysisView, type AnalysisResult } from "./AnalysisView";
 import { ParseReportView } from "./ParseReportView";
 import { RulesPane } from "./RulesPane";
 import {
@@ -24,12 +25,32 @@ function App() {
   const [appliedShapesToml, setAppliedShapesToml] = createSignal("");
   const shapesChanged = () =>
     info() !== undefined && shapesToml() !== appliedShapesToml();
-  // rules.toml's contents, not used by analysis yet.
+  // rules.toml's contents.
   const [rulesToml, setRulesToml] = createSignal("");
+  // The latest Analyze. undefined until the first one.
+  const [analysis, setAnalysis] = createSignal<AnalysisResult>();
+  const rulesChanged = () => {
+    const latest = analysis();
+    return latest !== undefined && rulesToml() !== latest.rulesToml;
+  };
   let openExport!: HTMLDivElement;
 
   // Nothing to show until an export is open. We offer one instead.
   onMount(() => openExport.showPopover());
+
+  // Analyzes with `toml`. A rules.toml that doesn't parse shows up in the
+  // Report pane.
+  const analyze = async (toml: string) => {
+    setWorking("analyzing...");
+    try {
+      setAnalysis({ rulesToml: toml, analysis: await session.analyze(toml) });
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : String(caught);
+      setAnalysis({ rulesToml: toml, error: message });
+    } finally {
+      setWorking("");
+    }
+  };
 
   // Runs one session request that ingests with `toml`, showing its result or
   // its error. If error, the previous result stays up.
@@ -39,15 +60,21 @@ function App() {
   ) => {
     setWorking("ingesting...");
     setError("");
+    let ingested = false;
     try {
       setInfo(await request(toml));
       setAppliedShapesToml(toml);
+      ingested = true;
     } catch (caught) {
       setError(String(caught));
     } finally {
       setWorking("");
     }
+    // A new graph makes an earlier analysis stale, so redo it.
+    if (ingested && analysis() !== undefined) await analyze(rulesToml());
   };
+
+  const onAnalyze = () => analyze(rulesToml());
 
   const onExportChange = async (event: Event) => {
     const input = event.currentTarget as HTMLInputElement;
@@ -92,8 +119,11 @@ function App() {
       shapesToml={shapesToml()}
       setShapesToml={setShapesToml}
       shapesChanged={shapesChanged()}
+      rulesChanged={rulesChanged()}
       busy={busy()}
+      canAnalyze={info() !== undefined}
       onReingest={onApplyShapes}
+      onAnalyze={onAnalyze}
     />
   );
 
@@ -109,7 +139,16 @@ function App() {
         </p>
       }
     >
-      {(current) => <ParseReportView report={current().report} />}
+      {(current) => (
+        <>
+          <AnalysisView
+            result={analysis()}
+            itemCount={current().itemCount}
+            recipeCount={current().recipeCount}
+          />
+          <ParseReportView report={current().report} />
+        </>
+      )}
     </Show>
   );
 
