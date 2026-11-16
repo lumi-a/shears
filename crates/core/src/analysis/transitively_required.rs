@@ -100,6 +100,35 @@ impl TransitivelyRequired {
     pub fn transitively_required_recipe_count(&self) -> usize {
         self.recipe_bits.count_ones(..)
     }
+
+    /// Every transitively required item.
+    ///
+    /// Returned in index order.
+    ///
+    /// # Panics
+    ///
+    /// If the graph has more than `u32::MAX` items.
+    #[inline]
+    pub fn transitively_required_items(&self) -> impl Iterator<Item = ItemIndex> + '_ {
+        self.item_bits.ones().map(|position| {
+            ItemIndex::new(u32::try_from(position).expect("fewer than u32::MAX items"))
+        })
+    }
+
+    /// Every recipe that propagates, i.e. has at least one transitively required output over a
+    /// propagating edge.
+    ///
+    /// Returned in index order.
+    ///
+    /// # Panics
+    ///
+    /// If the graph has more than `u32::MAX` recipes.
+    #[inline]
+    pub fn transitively_required_recipes(&self) -> impl Iterator<Item = RecipeIndex> + '_ {
+        self.recipe_bits.ones().map(|position| {
+            RecipeIndex::new(u32::try_from(position).expect("fewer than u32::MAX recipes"))
+        })
+    }
 }
 
 /// Computes what's transitively required.
@@ -237,11 +266,40 @@ fn naive_transitively_required(
 mod tests {
     use proptest::prelude::*;
 
-    use super::{naive_transitively_required, transitively_required, Why};
+    use super::{Why, naive_transitively_required, transitively_required};
     use crate::analysis::edges::{Cause, EdgeState, EdgeStates, NodeAttrs};
     use crate::analysis::proptest_support::arb_graph_attrs_edges;
     use crate::graph_dsl::parse;
     use crate::model::{ItemIndex, RecipeIndex};
+
+    #[test]
+    fn iterates_only_transitively_required_items_and_recipes() {
+        let (graph, required_items) = parse(
+            "
+            required concrete
+            mix: stone_dust + water -> concrete
+            smelt: ore -> ingot
+            ",
+        );
+        let mut attrs = NodeAttrs::defaults(&graph);
+        for required in required_items {
+            attrs.set_required(required, Cause::Pseudo);
+        }
+        let edges = EdgeStates::defaults(&graph);
+
+        let live = transitively_required(&graph, &attrs, &edges);
+
+        let items: Vec<&str> = live
+            .transitively_required_items()
+            .map(|item| graph.item(item).id())
+            .collect();
+        let recipes: Vec<&str> = live
+            .transitively_required_recipes()
+            .map(|recipe| graph.recipe(recipe).id())
+            .collect();
+        assert_eq!(items, ["concrete", "stone_dust", "water"]);
+        assert_eq!(recipes, ["mix"]);
+    }
 
     #[test]
     fn marks_required_items_and_their_producer_chain_transitively_required() {
