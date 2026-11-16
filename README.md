@@ -18,6 +18,13 @@ Eliminate unneeded recipes in KubeJS Minecraft Modpacks.
   silently default to no match, you should instead emit some information.
   Either just at debug time, but perhaps even preferrably at runtime.
   Users might care about this.
+- Make sure that `removed_recipes` is respected somehow, though that
+  should show up in some cases when you do exploration stuff, like kanthal
+  cooling maybe, or cryobolus
+- Perhaps the different categories of reports should be tabbed in the same
+  way that the RULES (edit files) tab is tabbed.
+- Perhaps the collapsing of entries (e.g. the "1 file changed" of diffs)
+  should only happen above a certain threshold of content within the collapsible
 
 ## License
 

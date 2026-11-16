@@ -308,11 +308,11 @@ h3 {
    Parsing report
 *****************************************************************/
 
-.parse-report details {
+.report details {
   border-bottom: 1px solid var(--border);
 }
 
-.parse-report summary {
+.report summary {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
@@ -323,11 +323,11 @@ h3 {
   list-style: none;
 }
 
-.parse-report summary::-webkit-details-marker {
+.report summary::-webkit-details-marker {
   display: none;
 }
 
-.parse-report summary::before {
+.report summary::before {
   flex: none;
   width: 0.4em;
   height: 0.4em;
@@ -337,20 +337,20 @@ h3 {
   transform: translateY(-0.15em) rotate(-45deg);
 }
 
-.parse-report details[open] > summary::before {
+.report details[open] > summary::before {
   transform: translateY(-0.3em) rotate(45deg);
 }
 
-.parse-report summary:hover {
+.report summary:hover {
   background: var(--bg-subtle);
 }
 
-.parse-report summary .count {
+.report summary .count {
   flex: none;
   color: var(--fg-muted);
 }
 
-.parse-report summary .label {
+.report summary .label {
   min-width: 0;
 }
 
@@ -358,7 +358,7 @@ h3 {
   font-variant-numeric: tabular-nums;
 }
 
-.parse-report ul {
+.report details ul {
   margin-block: 0 var(--space-2);
   padding-left: 1.5rem;
   font-family: var(--font-mono);
@@ -366,33 +366,33 @@ h3 {
   overflow: auto;
 }
 
-.parse-report ul > li {
+.report details li {
   white-space: nowrap;
 }
 
-.parse-report .more {
+.report .more {
   font-family: var(--font-ui);
   color: var(--fg-muted);
 }
 
-.parse-report table {
+.report table {
   margin-block: var(--space-1) var(--space-2);
   border-collapse: collapse;
   font-size: var(--font-size-small);
 }
 
-.parse-report th,
-.parse-report td {
+.report th,
+.report td {
   padding: 0.125rem var(--space-2);
   border-bottom: 1px solid var(--border);
   text-align: left;
 }
 
-.parse-report td:first-child {
+.report td:first-child {
   font-family: var(--font-mono);
 }
 
-.parse-report td.count {
+.report td.count {
   text-align: right;
 }
 
@@ -477,7 +477,7 @@ h3 {
   font-weight: 600;
 }
 
-.analysis ul {
+.analysis > ul {
   margin-block: var(--space-2);
   padding-left: 1.5rem;
 }

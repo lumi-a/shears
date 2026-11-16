@@ -1,5 +1,6 @@
 import { For, Show } from "solid-js";
-import type { Analysis } from "./session";
+import { CappedList, LazyDetails } from "./ParseReportView";
+import type { Analysis, AnalysisDiff } from "./session";
 
 // What Analysis found or why rules.toml didn't parse.
 export interface AnalysisResult {
@@ -14,6 +15,58 @@ const count = (value: number) => value.toLocaleString();
 
 const percent = (part: number, whole: number) =>
   whole === 0 ? "" : ` (${((100 * part) / whole).toFixed(1)}%)`;
+
+// What changed since the previous analysis, one expandable list per kind of change.
+// Kinds that didn't change are left out.
+function DiffView(props: { diff: AnalysisDiff }) {
+  const changes = () =>
+    [
+      { sign: "+", label: "items newly required", ids: props.diff.items_added },
+      {
+        sign: "−",
+        label: "items no longer required",
+        ids: props.diff.items_removed,
+      },
+      {
+        sign: "+",
+        label: "recipes newly useful",
+        ids: props.diff.recipes_added,
+      },
+      {
+        sign: "−",
+        label: "recipes no longer useful",
+        ids: props.diff.recipes_removed,
+      },
+    ].filter((change) => change.ids.length > 0);
+
+  return (
+    <>
+      <h4>Since the previous analysis</h4>
+      <Show
+        when={changes().length > 0}
+        fallback={<p class="hint">No change.</p>}
+      >
+        <For each={changes()}>
+          {(change) => (
+            <LazyDetails
+              summary={
+                <>
+                  <span class="count">
+                    {change.sign}
+                    {count(change.ids.length)}
+                  </span>
+                  <span class="label">{change.label}</span>
+                </>
+              }
+            >
+              <CappedList items={change.ids} />
+            </LazyDetails>
+          )}
+        </For>
+      </Show>
+    </>
+  );
+}
 
 export function AnalysisView(props: {
   result: AnalysisResult | undefined;
@@ -60,6 +113,9 @@ export function AnalysisView(props: {
                   {(warning) => <li>{warning}</li>}
                 </For>
               </ul>
+            </Show>
+            <Show when={analysis().diff}>
+              {(diff) => <DiffView diff={diff()} />}
             </Show>
           </>
         )}

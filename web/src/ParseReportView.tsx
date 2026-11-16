@@ -13,7 +13,7 @@ import type { Diagnostic, ParseReport } from "./session";
 const SHOWN_PER_LIST = 200;
 
 // A <details> whose contents are only rendered while it's open.
-function LazyDetails(props: ParentProps<{ summary: JSX.Element }>) {
+export function LazyDetails(props: ParentProps<{ summary: JSX.Element }>) {
   const [open, setOpen] = createSignal(false);
   return (
     <details onToggle={(event) => setOpen(event.currentTarget.open)}>
@@ -23,7 +23,7 @@ function LazyDetails(props: ParentProps<{ summary: JSX.Element }>) {
   );
 }
 
-function CappedList(props: { items: string[] }) {
+export function CappedList(props: { items: string[] }) {
   const hidden = () => props.items.length - SHOWN_PER_LIST;
   return (
     <ul>

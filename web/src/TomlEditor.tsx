@@ -6,7 +6,7 @@ import {
   syntaxHighlighting,
 } from "@codemirror/language";
 import { toml } from "@codemirror/legacy-modes/mode/toml";
-import { EditorState } from "@codemirror/state";
+import { EditorState, Prec } from "@codemirror/state";
 import {
   drawSelection,
   dropCursor,
@@ -74,6 +74,8 @@ export function TomlEditor(props: {
   label: string;
   // Shown while the document is empty.
   placeholder: string;
+  // Called on Ctrl+Enter, to apply this file.
+  onRun: () => void;
 }) {
   let parent!: HTMLDivElement;
   let view: EditorView | undefined;
@@ -91,6 +93,19 @@ export function TomlEditor(props: {
           theme,
           placeholder(props.placeholder),
           EditorView.contentAttributes.of({ "aria-label": props.label }),
+          // Highest precedence, because the default keymap binds Mod-Enter to
+          // inserting a blank line (strange occurrence).
+          Prec.highest(
+            keymap.of([
+              {
+                key: "Mod-Enter",
+                run: () => {
+                  props.onRun();
+                  return true;
+                },
+              },
+            ]),
+          ),
           // Reading props.onChange when an edit happens, not tracking it, is
           // the point: it always calls whichever handler is current.
           // eslint-disable-next-line solid/reactivity

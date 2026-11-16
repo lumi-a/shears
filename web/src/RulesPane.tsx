@@ -44,6 +44,16 @@ export function RulesPane(props: {
   const textOf = (name: Tab) =>
     name === "rules.toml" ? props.rulesToml : props.shapesToml;
 
+  // Shared by the buttons and Ctrl+Enter in the editors.
+  const canAnalyze = () => !props.busy && props.canAnalyze;
+  const canReingest = () => !props.busy && props.shapesChanged;
+  const analyze = () => {
+    if (canAnalyze()) props.onAnalyze();
+  };
+  const reingest = () => {
+    if (canReingest()) props.onReingest();
+  };
+
   return (
     <div class="rules-pane">
       <div class="tabs" role="tablist" aria-label="Files">
@@ -83,6 +93,7 @@ export function RulesPane(props: {
             placeholder={RULES_PLACEHOLDER}
             value={props.rulesToml}
             onChange={(value) => props.setRulesToml(value)}
+            onRun={analyze}
           />
         </div>
         <div
@@ -97,6 +108,7 @@ export function RulesPane(props: {
             placeholder="# How to parse recipe types that aren't vanilla. Empty: vanilla recipe types only."
             value={props.shapesToml}
             onChange={(value) => props.setShapesToml(value)}
+            onRun={reingest}
           />
         </div>
       </div>
@@ -108,8 +120,9 @@ export function RulesPane(props: {
             <>
               <button
                 type="button"
-                disabled={props.busy || !props.canAnalyze}
-                onClick={() => props.onAnalyze()}
+                disabled={!canAnalyze()}
+                onClick={analyze}
+                title="Shortcut: Ctrl+Enter"
               >
                 Analyze
               </button>
@@ -121,8 +134,9 @@ export function RulesPane(props: {
         >
           <button
             type="button"
-            disabled={props.busy || !props.shapesChanged}
-            onClick={() => props.onReingest()}
+            disabled={!canReingest()}
+            onClick={reingest}
+            title="Shortcut: Ctrl+Enter"
           >
             Re-ingest
           </button>

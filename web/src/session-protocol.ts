@@ -23,12 +23,22 @@ export interface SessionInfo {
   report: ParseReport;
 }
 
+// Mirrors shears_wasm::Diff. Every list consists of ids and is sorted.
+export interface AnalysisDiff {
+  items_added: string[];
+  items_removed: string[];
+  recipes_added: string[];
+  recipes_removed: string[];
+}
+
 // Mirrors shears_wasm::Analysis, as serialized by Session::analyze_json.
 export interface Analysis {
   required_count: number;
   transitively_required_item_count: number;
   transitively_required_recipe_count: number;
   warnings: string[];
+  // Against the previous successful analysis, null for the first one.
+  diff: AnalysisDiff | null;
 }
 
 export type RequestBody =

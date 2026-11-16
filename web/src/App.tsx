@@ -140,14 +140,14 @@ function App() {
       }
     >
       {(current) => (
-        <>
+        <div class="report">
           <AnalysisView
             result={analysis()}
             itemCount={current().itemCount}
             recipeCount={current().recipeCount}
           />
           <ParseReportView report={current().report} />
-        </>
+        </div>
       )}
     </Show>
   );

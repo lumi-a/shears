@@ -13,6 +13,7 @@ import type {
 
 export type {
   Analysis,
+  AnalysisDiff,
   Diagnostic,
   ParseReport,
   SessionInfo,
