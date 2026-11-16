@@ -11,17 +11,34 @@
               exported functions, and emits its own warning if added"
 )]
 
+use serde::Serialize;
+use shears_core::analysis::edges::{EdgeStates, NodeAttrs};
+use shears_core::analysis::transitively_required::transitively_required;
 use shears_core::archive;
-use shears_core::ingest::{self, find_root_directory, ParseReport, RawFile};
+use shears_core::ingest::{self, ParseReport, RawFile, find_root_directory};
 use shears_core::model::Graph;
-use wasm_bindgen::prelude::wasm_bindgen;
+use shears_core::rules::RuleSet;
 use wasm_bindgen::JsValue;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 /// An error for JS, from anything displayable.
 ///
 /// Just its message for now. Should be a structured value at some point.
 fn js_error(error: &impl ToString) -> JsValue {
     JsValue::from_str(&error.to_string())
+}
+
+/// The results of applying rules.toml to the current graph.
+#[derive(Debug, Serialize)]
+struct Analysis {
+    /// Items marked required directly by a rule.
+    required_count: usize,
+    /// Items that ended up transitively required.
+    transitively_required_item_count: usize,
+    /// Recipes that propagate at least one transitively required output.
+    transitively_required_recipe_count: usize,
+    /// Things in the rules that parsed fine but are probably mistakes.
+    warnings: Vec<String>,
 }
 
 /// One uploaded export, consisting of its files and the graph ingested from them.
@@ -115,5 +132,25 @@ impl Session {
     /// Never in practice: the report is plain strings and numbers.
     pub fn report_json(&self) -> Result<String, JsValue> {
         serde_json::to_string(&self.report).map_err(|error| js_error(&error))
+    }
+
+    /// Applies `rules_toml` to the current graph and works out what's transitively required.
+    ///
+    /// # Errors
+    ///
+    /// If `rules_toml` isn't a valid rules file.
+    pub fn analyze_json(&self, rules_toml: &str) -> Result<String, JsValue> {
+        let rules = RuleSet::parse(rules_toml).map_err(|error| js_error(&error))?;
+        let mut attrs = NodeAttrs::defaults(&self.graph);
+        let mut edges = EdgeStates::defaults(&self.graph);
+        rules.apply(&self.graph, &mut attrs, &mut edges, 0);
+        let live = transitively_required(&self.graph, &attrs, &edges);
+        let analysis = Analysis {
+            required_count: attrs.required_items().count(),
+            transitively_required_item_count: live.transitively_required_item_count(),
+            transitively_required_recipe_count: live.transitively_required_recipe_count(),
+            warnings: rules.warnings().to_vec(),
+        };
+        serde_json::to_string(&analysis).map_err(|error| js_error(&error))
     }
 }
