@@ -23,12 +23,30 @@ export interface SessionInfo {
   report: ParseReport;
 }
 
+// Mirrors shears_wasm::Analysis, as serialized by Session::analyze_json.
+export interface Analysis {
+  required_count: number;
+  transitively_required_item_count: number;
+  transitively_required_recipe_count: number;
+  warnings: string[];
+}
+
 export type RequestBody =
   | { kind: "open"; bytes: ArrayBuffer; shapesToml: string }
-  | { kind: "reingest"; shapesToml: string };
+  | { kind: "reingest"; shapesToml: string }
+  | { kind: "analyze"; rulesToml: string };
+
+export type Kind = RequestBody["kind"];
+
+// What each kind of request answers with.
+export interface Results {
+  open: SessionInfo;
+  reingest: SessionInfo;
+  analyze: Analysis;
+}
 
 export type Request = RequestBody & { id: number };
 
 export type Response =
-  | { id: number; ok: true; info: SessionInfo }
+  | { id: number; ok: true; result: Results[Kind] }
   | { id: number; ok: false; error: string };

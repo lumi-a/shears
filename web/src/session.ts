@@ -2,12 +2,24 @@
 //
 // Every call is a message to the worker and answered in order.
 
-import type { RequestBody, Response, SessionInfo } from "./session-protocol";
+import type {
+  Analysis,
+  Kind,
+  RequestBody,
+  Response,
+  Results,
+  SessionInfo,
+} from "./session-protocol";
 
-export type { Diagnostic, ParseReport, SessionInfo } from "./session-protocol";
+export type {
+  Analysis,
+  Diagnostic,
+  ParseReport,
+  SessionInfo,
+} from "./session-protocol";
 
 interface Pending {
-  resolve: (info: SessionInfo) => void;
+  resolve: (result: Results[Kind]) => void;
   reject: (error: Error) => void;
 }
 
@@ -24,7 +36,7 @@ export class SessionClient {
       const pending = this.#pending.get(response.id);
       this.#pending.delete(response.id);
       if (response.ok) {
-        pending?.resolve(response.info);
+        pending?.resolve(response.result);
       } else {
         pending?.reject(new Error(response.error));
       }
@@ -53,10 +65,24 @@ export class SessionClient {
     return this.#send({ kind: "reingest", shapesToml });
   }
 
-  #send(body: RequestBody, transfer: Transferable[] = []) {
+  // Applies rulesToml (rules.toml) to the current graph. Fails if it doesn't
+  // parse.
+  analyze(rulesToml: string): Promise<Analysis> {
+    return this.#send({ kind: "analyze", rulesToml });
+  }
+
+  // The worker answers a request of kind K with Results[K]. TypeScript can't
+  // see that across postMessage, hence the cast.
+  #send<K extends Kind>(
+    body: Extract<RequestBody, { kind: K }>,
+    transfer: Transferable[] = [],
+  ): Promise<Results[K]> {
     const id = this.#nextId++;
-    return new Promise<SessionInfo>((resolve, reject) => {
-      this.#pending.set(id, { resolve, reject });
+    return new Promise<Results[K]>((resolve, reject) => {
+      this.#pending.set(id, {
+        resolve: resolve as (result: Results[Kind]) => void,
+        reject,
+      });
       this.#worker.postMessage({ ...body, id }, transfer);
     });
   }

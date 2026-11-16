@@ -4,9 +4,12 @@
 
 import init, { Session } from "./wasm-pkg/shears_wasm";
 import type {
+  Analysis,
+  Kind,
   ParseReport,
   Request,
   Response,
+  Results,
   SessionInfo,
 } from "./session-protocol";
 
@@ -23,7 +26,14 @@ function infoOf(current: Session): SessionInfo {
   };
 }
 
-function handle(request: Request): SessionInfo {
+function current(): Session {
+  if (session === undefined) {
+    throw new Error("no export uploaded yet");
+  }
+  return session;
+}
+
+function handle(request: Request): Results[Kind] {
   switch (request.kind) {
     case "open": {
       // Only replace and free the old session once the new one succeeded.
@@ -36,12 +46,12 @@ function handle(request: Request): SessionInfo {
       return infoOf(opened);
     }
     case "reingest": {
-      if (session === undefined) {
-        throw new Error("no export uploaded yet");
-      }
-      session.reingest(request.shapesToml);
-      return infoOf(session);
+      const reingested = current();
+      reingested.reingest(request.shapesToml);
+      return infoOf(reingested);
     }
+    case "analyze":
+      return JSON.parse(current().analyze_json(request.rulesToml)) as Analysis;
   }
 }
 
@@ -50,7 +60,7 @@ self.onmessage = async (event: MessageEvent<Request>) => {
   const request = event.data;
   let response: Response;
   try {
-    response = { id: request.id, ok: true, info: handle(request) };
+    response = { id: request.id, ok: true, result: handle(request) };
   } catch (error) {
     // Errors from Rust arrive as plain strings for now.
     response = { id: request.id, ok: false, error: String(error) };
