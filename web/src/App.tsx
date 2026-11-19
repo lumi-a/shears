@@ -156,17 +156,16 @@ function App() {
     <p class="placeholder">Searching items and recipes WIP.</p>
   );
 
+  // TODO: Would probably be useful to have a "what is this?" or "?" button popup for more
+  // information about the site. Perhaps it should just mirror README.md, idk. Probably
+  // needs more "How, specifically, to use this site". Would then also include a link
+  // to the github.
+  // Do we need this header at all, actually? And while we're at it:
+  // TODO: Do the panes need headers? they seem kinda silly and take up space best used
+  // otherwise. Can they be replaced with something smaller, or perhaps dropped entirely?
   return (
     <div class="app">
       <header class="app-header">
-        <h1>
-          <img
-            class="logo"
-            src={`${import.meta.env.BASE_URL}favicon.svg`}
-            alt=""
-          />
-          shears
-        </h1>
         <button type="button" popovertarget="open-export" disabled={busy()}>
           Open export...
         </button>
