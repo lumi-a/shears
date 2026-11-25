@@ -11,11 +11,13 @@
               exported functions, and emits its own warning if added"
 )]
 
+mod details;
 mod explore;
 
 use std::collections::BTreeSet;
 
 use serde::Serialize;
+use shears_core::analysis::adjacency::Lookups;
 use shears_core::analysis::edges::{EdgeStates, NodeAttrs};
 use shears_core::analysis::transitively_required::{
     TransitivelyRequired, transitively_required,
@@ -134,6 +136,13 @@ struct Links {
 /// Only valid for the graph it ran on, so a re-ingest drops it.
 #[derive(Debug)]
 struct Analyzed {
+    /// The rules the analysis ran with, as the one-element list [`RuleSet::apply`]'s `file`
+    /// indexes.
+    rule_sets: Vec<RuleSet>,
+    /// Which items the rules required directly.
+    attrs: NodeAttrs,
+    /// Which edges the rules changed.
+    edges: EdgeStates,
     /// What ended up transitively required.
     live: TransitivelyRequired,
 }
@@ -152,6 +161,8 @@ pub struct Session {
     graph: Graph,
     /// The parse report from the latest successful ingest.
     report: ParseReport,
+    /// Lookups into `graph`. For the explorer.
+    lookups: Lookups,
     /// What the latest successful analysis found. Used to diff against the next.
     previous: Option<Snapshot>,
     /// The latest successful analysis on the current graph.
@@ -177,9 +188,11 @@ impl Session {
             find_root_directory::strip(unpacked).map_err(|error| js_error(&error))?;
         let (graph, report) =
             ingest::ingest(&files, shapes_toml).map_err(|error| js_error(&error))?;
+        let lookups = Lookups::build(&graph);
         Ok(Self {
             root_directory,
             files,
+            lookups,
             graph,
             report,
             previous: None,
@@ -198,6 +211,7 @@ impl Session {
     pub fn reingest(&mut self, shapes_toml: &str) -> Result<(), JsValue> {
         let (graph, report) =
             ingest::ingest(&self.files, shapes_toml).map_err(|error| js_error(&error))?;
+        self.lookups = Lookups::build(&graph);
         self.graph = graph;
         self.report = report;
         self.analyzed = None;
@@ -275,7 +289,12 @@ impl Session {
                 .map(|previous| Diff::between(previous, &snapshot)),
         };
         self.previous = Some(snapshot);
-        self.analyzed = Some(Analyzed { live });
+        self.analyzed = Some(Analyzed {
+            rule_sets: vec![rules],
+            attrs,
+            edges,
+            live,
+        });
         serde_json::to_string(&analysis).map_err(|error| js_error(&error))
     }
 }
