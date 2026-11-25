@@ -6,6 +6,7 @@ import {
   type JSX,
   type ParentProps,
 } from "solid-js";
+import type { Target } from "./Details";
 import type { Diagnostic, ParseReport } from "./session";
 
 // How many entries a list renders before "and N more". A big export has tens
@@ -23,12 +24,31 @@ export function LazyDetails(props: ParentProps<{ summary: JSX.Element }>) {
   );
 }
 
-export function CappedList(props: { items: string[] }) {
+// With `open`, the entries are ids. Clicking one opens it.
+export function CappedList(props: {
+  items: string[];
+  open?: (id: string) => void;
+}) {
   const hidden = () => props.items.length - SHOWN_PER_LIST;
   return (
     <ul>
       <For each={props.items.slice(0, SHOWN_PER_LIST)}>
-        {(item) => <li>{item}</li>}
+        {(item) => (
+          <li>
+            <Show when={props.open} fallback={item}>
+              {(open) => (
+                <button
+                  type="button"
+                  class="link"
+                  title="Open in the Explorer"
+                  onClick={() => open()(item)}
+                >
+                  {item}
+                </button>
+              )}
+            </Show>
+          </li>
+        )}
       </For>
       <Show when={hidden() > 0}>
         <li class="more">and {hidden()} more</li>
@@ -62,7 +82,11 @@ function groupByMessage(diagnostics: Diagnostic[]): DiagnosticGroup[] {
     );
 }
 
-export function ParseReportView(props: { report: ParseReport }) {
+export function ParseReportView(props: {
+  report: ParseReport;
+  // Opens an item in the Explorer.
+  open: (target: Target) => void;
+}) {
   const groups = createMemo(() => groupByMessage(props.report.diagnostics));
   const recipeTypes = createMemo(() =>
     Object.entries(props.report.recipe_type_counts).sort(
@@ -130,7 +154,10 @@ export function ParseReportView(props: { report: ParseReport }) {
           </>
         }
       >
-        <CappedList items={props.report.registered_but_unreferenced} />
+        <CappedList
+          items={props.report.registered_but_unreferenced}
+          open={(id) => props.open({ kind: "item", id })}
+        />
       </LazyDetails>
     </section>
   );

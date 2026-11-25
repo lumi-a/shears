@@ -1,5 +1,6 @@
 import { For, Show } from "solid-js";
 import { CappedList, LazyDetails } from "./ParseReportView";
+import type { Target } from "./Details";
 import type { Analysis, AnalysisDiff } from "./session";
 
 // What Analysis found or why rules.toml didn't parse.
@@ -18,23 +19,34 @@ const percent = (part: number, whole: number) =>
 
 // What changed since the previous analysis, one expandable list per kind of change.
 // Kinds that didn't change are left out.
-function DiffView(props: { diff: AnalysisDiff }) {
+function DiffView(props: {
+  diff: AnalysisDiff;
+  open: (target: Target) => void;
+}) {
   const changes = () =>
     [
-      { sign: "+", label: "items newly required", ids: props.diff.items_added },
+      {
+        sign: "+",
+        label: "items newly required",
+        kind: "item" as const,
+        ids: props.diff.items_added,
+      },
       {
         sign: "−",
         label: "items no longer required",
+        kind: "item" as const,
         ids: props.diff.items_removed,
       },
       {
         sign: "+",
         label: "recipes newly useful",
+        kind: "recipe" as const,
         ids: props.diff.recipes_added,
       },
       {
         sign: "−",
         label: "recipes no longer useful",
+        kind: "recipe" as const,
         ids: props.diff.recipes_removed,
       },
     ].filter((change) => change.ids.length > 0);
@@ -59,7 +71,10 @@ function DiffView(props: { diff: AnalysisDiff }) {
                 </>
               }
             >
-              <CappedList items={change.ids} />
+              <CappedList
+                items={change.ids}
+                open={(id) => props.open({ kind: change.kind, id })}
+              />
             </LazyDetails>
           )}
         </For>
@@ -72,6 +87,8 @@ export function AnalysisView(props: {
   result: AnalysisResult | undefined;
   itemCount: number;
   recipeCount: number;
+  // Opens an item or recipe in the Explorer.
+  open: (target: Target) => void;
 }) {
   return (
     <section class="analysis">
@@ -115,7 +132,7 @@ export function AnalysisView(props: {
               </ul>
             </Show>
             <Show when={analysis().diff}>
-              {(diff) => <DiffView diff={diff()} />}
+              {(diff) => <DiffView diff={diff()} open={props.open} />}
             </Show>
           </>
         )}

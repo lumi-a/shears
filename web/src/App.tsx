@@ -1,5 +1,6 @@
 import { createSignal, For, onMount, Show } from "solid-js";
 import { AnalysisView, type AnalysisResult } from "./AnalysisView";
+import type { Target } from "./Details";
 import { Explorer } from "./Explorer";
 import { ParseReportView } from "./ParseReportView";
 import { RulesPane } from "./RulesPane";
@@ -146,19 +147,30 @@ function App() {
             result={analysis()}
             itemCount={current().itemCount}
             recipeCount={current().recipeCount}
+            open={openInExplorer}
           />
-          <ParseReportView report={current().report} />
+          <ParseReportView report={current().report} open={openInExplorer} />
         </div>
       )}
     </Show>
   );
+
+  // What the Report pane asked the Explorer to open.
+  const [explorerRequest, setExplorerRequest] = createSignal<{
+    target: Target;
+  }>();
+  const openInExplorer = (target: Target) => setExplorerRequest({ target });
 
   const explorerPane = (
     <Show
       when={info() !== undefined}
       fallback={<p class="placeholder">No export open yet.</p>}
     >
-      <Explorer session={session} revision={[info(), analysis()]} />
+      <Explorer
+        session={session}
+        revision={[info(), analysis()]}
+        request={explorerRequest()}
+      />
     </Show>
   );
 

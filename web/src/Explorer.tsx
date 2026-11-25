@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, Show } from "solid-js";
+import { createEffect, createSignal, For, Show, untrack } from "solid-js";
 import {
   ItemDetailView,
   LinkText,
@@ -59,6 +59,8 @@ export function Explorer(props: {
   session: SessionClient;
   // Changes whenever the graph or the analysis did.
   revision: unknown;
+  // Something to open from outside, e.g. an id clicked in the Report pane.
+  request: { target: Target } | undefined;
 }) {
   const [query, setQuery] = createSignal("");
   const [mode, setMode] = createSignal<Mode>("items");
@@ -77,6 +79,12 @@ export function Explorer(props: {
       setMode(recipes ? "recipes" : "items");
     },
   };
+
+  createEffect(() => {
+    const request = props.request;
+    // Only the request is what this reacts to, not the history open() reads.
+    if (request !== undefined) untrack(() => navigation.open(request.target));
+  });
 
   const search = createLatest(() => {
     void props.revision;
