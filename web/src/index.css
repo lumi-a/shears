@@ -11,7 +11,7 @@
   --error: light-dark(#b42318, #ff8a80);
 
   /* TOML editor */
-  --editor-active-line: light-dark(#f7f7f8, #202023);
+  --editor-active-line: light-dark(rgb(0 0 0 / 0.03), rgb(255 255 255 / 0.022));
   --editor-selection: light-dark(#cbd8f5, #34405c);
   --syntax-comment: var(--fg-muted);
   --syntax-key: light-dark(#7a3e9d, #d2a8ff);
