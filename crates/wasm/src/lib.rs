@@ -11,11 +11,15 @@
               exported functions, and emits its own warning if added"
 )]
 
+mod explore;
+
 use std::collections::BTreeSet;
 
 use serde::Serialize;
 use shears_core::analysis::edges::{EdgeStates, NodeAttrs};
-use shears_core::analysis::transitively_required::transitively_required;
+use shears_core::analysis::transitively_required::{
+    TransitivelyRequired, transitively_required,
+};
 use shears_core::archive;
 use shears_core::ingest::{self, ParseReport, RawFile, find_root_directory};
 use shears_core::model::Graph;
@@ -94,6 +98,46 @@ impl Diff {
     }
 }
 
+/// A reference to an item or recipe.
+///
+/// The page will use this to link to.
+/// TODO: Should we not specify whether this is an item or a recipe?
+#[derive(Debug, Serialize)]
+struct Link {
+    /// The item's or recipe's id.
+    id: String,
+    /// Whether it's transitively required (in case of an item) or propagates (in case of a
+    /// recipe). `None` before the first analysis.
+    live: Option<bool>,
+}
+
+/// The first few of a list of links, and how long the whole list is.
+///
+/// Mirrored by `Links` in `web/src/session-protocol.ts`.
+#[derive(Debug, Serialize)]
+struct Links {
+    /// How many there are in total.
+    total: usize,
+    /// The first of them, in order, at most as many as asked for.
+    ///
+    /// TODO: We should be able to save a lot of memory if, instead of strings (in Link)
+    /// we saved indices. Or perhaps, for each item / recipe just save its next neighbor.
+    shown: Vec<Link>,
+}
+
+/// The latest successful analysis.
+///
+/// We keep this for the explorer.
+/// TODO: Should we merge this with the state that, for sake of diffing, we already
+/// keep anyway?
+///
+/// Only valid for the graph it ran on, so a re-ingest drops it.
+#[derive(Debug)]
+struct Analyzed {
+    /// What ended up transitively required.
+    live: TransitivelyRequired,
+}
+
 /// One uploaded export, consisting of its files and the graph ingested from them.
 ///
 /// The files stay in WASM so a changed parsing.toml can re-ingest without another upload.
@@ -110,6 +154,8 @@ pub struct Session {
     report: ParseReport,
     /// What the latest successful analysis found. Used to diff against the next.
     previous: Option<Snapshot>,
+    /// The latest successful analysis on the current graph.
+    analyzed: Option<Analyzed>,
 }
 
 #[wasm_bindgen]
@@ -137,6 +183,7 @@ impl Session {
             graph,
             report,
             previous: None,
+            analyzed: None,
         })
     }
 
@@ -145,11 +192,15 @@ impl Session {
     /// # Errors
     ///
     /// If `shapes_toml` doesn't parse. The previous graph and report are kept then.
+    ///
+    /// Drops the latest analysis, which doesn't apply to the new graph.
+    /// The snapshot to diff against stays, because it's by id.
     pub fn reingest(&mut self, shapes_toml: &str) -> Result<(), JsValue> {
         let (graph, report) =
             ingest::ingest(&self.files, shapes_toml).map_err(|error| js_error(&error))?;
         self.graph = graph;
         self.report = report;
+        self.analyzed = None;
         Ok(())
     }
 
@@ -224,6 +275,7 @@ impl Session {
                 .map(|previous| Diff::between(previous, &snapshot)),
         };
         self.previous = Some(snapshot);
+        self.analyzed = Some(Analyzed { live });
         serde_json::to_string(&analysis).map_err(|error| js_error(&error))
     }
 }
