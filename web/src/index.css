@@ -501,7 +501,7 @@ h3 {
 
 .explorer {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   grid-template-columns: minmax(0, 1fr);
   height: 100%;
 }
@@ -534,31 +534,101 @@ h3 {
   color: var(--fg);
 }
 
-.explorer > .error {
-  padding: var(--space-2) var(--space-3);
+.explorer .error {
   color: var(--error);
   font-size: var(--font-size-small);
+  white-space: pre-wrap;
 }
 
-.explorer-results {
+.explorer-results,
+.detail-body {
   overflow: auto;
   padding: var(--space-2) var(--space-3);
 }
 
-.explorer-results ul {
+.explorer-detail {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+.history {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.history button {
+  border: none;
+  border-right: 1px solid var(--border);
+  background: none;
+}
+
+.detail-title {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.detail-body h4 {
+  margin-block: var(--space-4) var(--space-1);
+  font-size: var(--font-size);
+  font-weight: 600;
+}
+
+.detail-body p {
+  margin-block: var(--space-2);
+}
+
+ul.links,
+ul.slots {
   margin: 0;
   padding: 0;
   list-style: none;
-  font-family: var(--font-mono);
   font-size: var(--font-size-small);
 }
 
-.explorer-results li {
+ul.links {
+  font-family: var(--font-mono);
+}
+
+ul.links > li {
   white-space: nowrap;
 }
 
+ul.slots > li {
+  margin-bottom: var(--space-2);
+}
+
+ul.slots ul.links {
+  padding-left: var(--space-4);
+}
+
+ol.why {
+  margin: 0;
+  padding-left: 1.5rem;
+  font-size: var(--font-size-small);
+}
+
+/* Ids you can click, looking like text rather than buttons. */
+button.link {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+}
+
+button.link:hover:not(:disabled) {
+  background: none;
+  text-decoration: underline;
+}
+
+button.link[aria-current="true"] {
+  background: var(--bg-hover);
+}
+
 /* Not needed by the latest analysis, i.e. what would get hidden. */
-.link-text.dead {
+.dead {
   color: var(--fg-muted);
   text-decoration: line-through;
 }

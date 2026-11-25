@@ -1,36 +1,60 @@
 import { createEffect, createSignal, For, Show } from "solid-js";
-import type { Link, Links, SessionClient } from "./session";
+import {
+  ItemDetailView,
+  LinkText,
+  RecipeDetailView,
+  type Navigation,
+  type Target,
+} from "./Details";
+import type { ItemDetail, Links, RecipeDetail, SessionClient } from "./session";
+import { Split } from "./Split";
 
 // How many search results to show at once.
 const SHOWN_RESULTS = 200;
+// How many recipes or slot members a detail view lists at once.
+const SHOWN_PER_LIST = 50;
 
 type Mode = "items" | "recipes";
 const MODES: Mode[] = ["items", "recipes"];
 
-// One search's outcome.
-type Outcome = { links: Links } | { error: string };
+// What a request to the Session came back with or why it failed.
+type Outcome<T> = { value: T } | { error: string };
 
-// An item or recipe id. This is struck through if the latest analysis found it not needed.
-export function LinkText(props: { link: Link }) {
-  return (
-    <span
-      class="link-text"
-      classList={{ dead: props.link.live === false }}
-      title={
-        props.link.live === null
-          ? undefined
-          : props.link.live
-            ? "needed"
-            : "not needed"
-      }
-    >
-      {props.link.id}
-    </span>
-  );
+const messageOf = (caught: unknown) =>
+  caught instanceof Error ? caught.message : String(caught);
+
+// Runs `request` whenever the signals it reads change, keeping only the newest
+// answer.
+function createLatest<T>(request: () => Promise<T> | undefined) {
+  const [outcome, setOutcome] = createSignal<Outcome<T>>();
+  let latest = 0;
+  createEffect(() => {
+    const current = ++latest;
+    const pending = request();
+    if (pending === undefined) {
+      setOutcome(undefined);
+      return;
+    }
+    pending.then(
+      (value) => {
+        if (current === latest) setOutcome({ value });
+      },
+      (caught: unknown) => {
+        if (current === latest) setOutcome({ error: messageOf(caught) });
+      },
+    );
+  });
+  return outcome;
 }
 
-// Searches items or recipes as you type. The query is a selector like a
-// rule's filter, or plain text as one id or /regex/.
+const valueOf = <T,>(outcome: Outcome<T> | undefined) =>
+  outcome !== undefined && "value" in outcome ? outcome.value : undefined;
+const errorOf = <T,>(outcome: Outcome<T> | undefined) =>
+  outcome !== undefined && "error" in outcome ? outcome.error : undefined;
+
+// Searches items or recipes as you type, and shows the details of what's
+// clicked, with a history to go back and forth in. The query is a selector
+// like a rule's filter, or plain text as one id or /regex/.
 export function Explorer(props: {
   session: SessionClient;
   // Changes whenever the graph or the analysis did.
@@ -38,42 +62,130 @@ export function Explorer(props: {
 }) {
   const [query, setQuery] = createSignal("");
   const [mode, setMode] = createSignal<Mode>("items");
-  const [outcome, setOutcome] = createSignal<Outcome>();
+  const [history, setHistory] = createSignal<Target[]>([]);
+  const [position, setPosition] = createSignal(-1);
+  const target = () => history()[position()];
 
-  // Every search gets a number so a slow answer to an old query can't
-  // replace a newer one.
-  let latest = 0;
-  createEffect(() => {
-    const current = ++latest;
-    const text = query();
-    const recipes = mode() === "recipes";
+  const navigation: Navigation = {
+    open: (next) => {
+      const kept = history().slice(0, position() + 1);
+      setHistory([...kept, next]);
+      setPosition(kept.length);
+    },
+    search: (text, recipes) => {
+      setQuery(text);
+      setMode(recipes ? "recipes" : "items");
+    },
+  };
+
+  const search = createLatest(() => {
     void props.revision;
-    props.session.search(text, recipes, SHOWN_RESULTS).then(
-      (links) => {
-        if (current === latest) setOutcome({ links });
-      },
-      (caught: unknown) => {
-        if (current === latest) {
-          setOutcome({
-            error: caught instanceof Error ? caught.message : String(caught),
-          });
-        }
-      },
-    );
+    return props.session.search(query(), mode() === "recipes", SHOWN_RESULTS);
   });
 
-  const links = () => {
-    const current = outcome();
-    return current !== undefined && "links" in current
-      ? current.links
-      : undefined;
-  };
-  const error = () => {
-    const current = outcome();
-    return current !== undefined && "error" in current
-      ? current.error
-      : undefined;
-  };
+  const detail = createLatest<{ item: ItemDetail } | { recipe: RecipeDetail }>(
+    () => {
+      void props.revision;
+      const shown = target();
+      if (shown === undefined) return undefined;
+      return shown.kind === "item"
+        ? props.session
+            .item(shown.id, SHOWN_PER_LIST)
+            .then((item) => ({ item }))
+        : props.session
+            .recipe(shown.id, SHOWN_PER_LIST)
+            .then((recipe) => ({ recipe }));
+    },
+  );
+
+  const results = (
+    <div class="explorer-results">
+      <Show when={errorOf(search())}>
+        {(message) => <p class="error">{message()}</p>}
+      </Show>
+      <Show when={valueOf<Links>(search())}>
+        {(found) => (
+          <>
+            <p class="hint">
+              {found().total.toLocaleString()} {mode()}
+              <Show when={found().total > found().shown.length}>
+                , showing the first {found().shown.length}
+              </Show>
+            </p>
+            <ul class="links">
+              <For each={found().shown}>
+                {(link) => (
+                  <li>
+                    <button
+                      type="button"
+                      class="link"
+                      aria-current={
+                        target()?.id === link.id ? "true" : undefined
+                      }
+                      onClick={() =>
+                        navigation.open({
+                          kind: mode() === "recipes" ? "recipe" : "item",
+                          id: link.id,
+                        })
+                      }
+                    >
+                      <LinkText link={link} />
+                    </button>
+                  </li>
+                )}
+              </For>
+            </ul>
+          </>
+        )}
+      </Show>
+    </div>
+  );
+
+  const details = (
+    <div class="explorer-detail">
+      <div class="history">
+        <button
+          type="button"
+          disabled={position() <= 0}
+          onClick={() => setPosition(position() - 1)}
+          aria-label="Back"
+        >
+          ←
+        </button>
+        <button
+          type="button"
+          disabled={position() >= history().length - 1}
+          onClick={() => setPosition(position() + 1)}
+          aria-label="Forward"
+        >
+          →
+        </button>
+      </div>
+      <div class="detail-body">
+        <Show
+          when={target() !== undefined}
+          fallback={<p class="hint">Click a result to see its details.</p>}
+        >
+          <Show when={errorOf(detail())}>
+            {(message) => <p class="error">{message()}</p>}
+          </Show>
+          <Show when={valueOf(detail())}>
+            {(shown) => {
+              const current = shown();
+              return "item" in current ? (
+                <ItemDetailView detail={current.item} navigation={navigation} />
+              ) : (
+                <RecipeDetailView
+                  detail={current.recipe}
+                  navigation={navigation}
+                />
+              );
+            }}
+          </Show>
+        </Show>
+      </div>
+    </div>
+  );
 
   return (
     <div class="explorer">
@@ -101,30 +213,13 @@ export function Explorer(props: {
           </For>
         </div>
       </div>
-      <Show when={error()}>
-        {(message) => <p class="error">{message()}</p>}
-      </Show>
-      <Show when={links()}>
-        {(found) => (
-          <div class="explorer-results">
-            <p class="hint">
-              {found().total.toLocaleString()} {mode()}
-              <Show when={found().total > found().shown.length}>
-                , showing the first {found().shown.length}
-              </Show>
-            </p>
-            <ul>
-              <For each={found().shown}>
-                {(link) => (
-                  <li>
-                    <LinkText link={link} />
-                  </li>
-                )}
-              </For>
-            </ul>
-          </div>
-        )}
-      </Show>
+      <Split
+        direction="columns"
+        storageKey="shears.split.explorer"
+        initial={0.4}
+        first={results}
+        second={details}
+      />
     </div>
   );
 }

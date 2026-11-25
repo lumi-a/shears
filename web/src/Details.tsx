@@ -1,0 +1,292 @@
+import { For, Show, type JSX } from "solid-js";
+import type { ItemDetail, Link, Links, RecipeDetail } from "./session";
+
+// What the Explorer shows details of.
+export interface Target {
+  kind: "item" | "recipe";
+  id: string;
+}
+
+// How the details reach back into the Explorer.
+export interface Navigation {
+  // Shows `target`'s details.
+  open: (target: Target) => void;
+  // Searches for `query` among items or recipes.
+  search: (query: string, recipes: boolean) => void;
+}
+
+// An item or recipe id. This is struck through if the latest analysis found it not needed.
+export function LinkText(props: { link: Link }) {
+  return (
+    <span
+      class="link-text"
+      classList={{ dead: props.link.live === false }}
+      title={
+        props.link.live === null
+          ? undefined
+          : props.link.live
+            ? "needed"
+            : "not needed"
+      }
+    >
+      {props.link.id}
+    </span>
+  );
+}
+
+const percent = (chance: number) => `${Math.round(chance * 1000) / 10}%`;
+
+// Whether the latest analysis found it needed, in words.
+function Liveness(props: { live: boolean | null; needed: string }) {
+  return (
+    <Show
+      when={props.live !== null}
+      fallback={<span class="hint">Not analyzed yet.</span>}
+    >
+      <span classList={{ dead: props.live === false }}>
+        {props.live ? props.needed : `Not ${props.needed.toLowerCase()}`}
+      </span>
+    </Show>
+  );
+}
+
+// A clickable id, opening that item's or recipe's details.
+function LinkButton(props: {
+  link: Link;
+  kind: Target["kind"];
+  navigation: Navigation;
+}) {
+  return (
+    <button
+      type="button"
+      class="link"
+      onClick={() =>
+        props.navigation.open({ kind: props.kind, id: props.link.id })
+      }
+    >
+      <LinkText link={props.link} />
+    </button>
+  );
+}
+
+// A capped list of links, with how many there are in its heading.
+function LinkList(props: {
+  title: string;
+  links: Links;
+  kind: Target["kind"];
+  navigation: Navigation;
+}) {
+  const hidden = () => props.links.total - props.links.shown.length;
+  return (
+    <>
+      <h4>
+        {props.title} ({props.links.total.toLocaleString()})
+      </h4>
+      <ul class="links">
+        <For each={props.links.shown}>
+          {(link) => (
+            <li>
+              <LinkButton
+                link={link}
+                kind={props.kind}
+                navigation={props.navigation}
+              />
+            </li>
+          )}
+        </For>
+        <Show when={hidden() > 0}>
+          <li class="hint">and {hidden().toLocaleString()} more</li>
+        </Show>
+      </ul>
+    </>
+  );
+}
+
+// A link that's only known by id, assumed neither needed nor not.
+const unknown = (id: string): Link => ({ id, live: null });
+
+export function ItemDetailView(props: {
+  detail: ItemDetail;
+  navigation: Navigation;
+}) {
+  return (
+    <>
+      <h3 class="detail-title">
+        {props.detail.id}
+        <Show when={props.detail.fluid}>
+          <span class="hint"> (fluid)</span>
+        </Show>
+      </h3>
+      <p>
+        <Liveness live={props.detail.live} needed="Needed" />
+        <Show when={props.detail.required}>
+          {(cause) => <>, required directly by {cause()}</>}
+        </Show>
+      </p>
+
+      <Show when={props.detail.why.length > 0}>
+        <h4>Why it's needed</h4>
+        <ol class="why">
+          <For each={props.detail.why}>
+            {(step): JSX.Element =>
+              "via" in step ? (
+                <li>
+                  input of{" "}
+                  <LinkButton
+                    link={unknown(step.via.recipe)}
+                    kind="recipe"
+                    navigation={props.navigation}
+                  />
+                  , which makes{" "}
+                  <LinkButton
+                    link={unknown(step.via.output)}
+                    kind="item"
+                    navigation={props.navigation}
+                  />
+                </li>
+              ) : (
+                <li>required by {step.required}</li>
+              )
+            }
+          </For>
+        </ol>
+      </Show>
+
+      <Show when={props.detail.tags.length > 0}>
+        <h4>Tags ({props.detail.tags.length})</h4>
+        <ul class="links">
+          <For each={props.detail.tags}>
+            {(tag) => (
+              <li>
+                <button
+                  type="button"
+                  class="link"
+                  title="Search for items with this tag"
+                  onClick={() =>
+                    props.navigation.search(`{ tag = "${tag}" }`, false)
+                  }
+                >
+                  {tag}
+                </button>
+              </li>
+            )}
+          </For>
+        </ul>
+      </Show>
+
+      <LinkList
+        title="Made by"
+        links={props.detail.produced_by}
+        kind="recipe"
+        navigation={props.navigation}
+      />
+      <LinkList
+        title="Used in"
+        links={props.detail.used_in}
+        kind="recipe"
+        navigation={props.navigation}
+      />
+    </>
+  );
+}
+
+export function RecipeDetailView(props: {
+  detail: RecipeDetail;
+  navigation: Navigation;
+}) {
+  const recipeType = () => props.detail.recipe_type;
+  return (
+    <>
+      <h3 class="detail-title">{props.detail.id}</h3>
+      <p>
+        <Liveness live={props.detail.live} needed="Useful" />
+      </p>
+      <p>
+        <button
+          type="button"
+          class="link"
+          title="Search for recipes of this type"
+          onClick={() =>
+            props.navigation.search(`{ type = "${recipeType()}" }`, true)
+          }
+        >
+          {recipeType()}
+        </button>
+        <Show when={props.detail.eu_per_tick}>
+          {(eu) => <>, {eu().toLocaleString()} EU/t</>}
+        </Show>
+        <Show when={props.detail.ticks}>
+          {(ticks) => <>, {(ticks() / 20).toLocaleString()} s</>}
+        </Show>
+      </p>
+
+      <h4>Inputs ({props.detail.inputs.length})</h4>
+      <ul class="slots">
+        <For each={props.detail.inputs}>
+          {(slot) => (
+            <li>
+              {slot.count.toLocaleString()}×
+              <Show when={slot.tag}>{(tag) => <> #{tag()}</>}</Show>
+              <Show when={slot.chance === 0}>
+                <span class="hint"> (catalyst, not consumed)</span>
+              </Show>
+              <Show when={slot.chance > 0 && slot.chance < 1}>
+                <span class="hint">
+                  {" "}
+                  ({percent(slot.chance)} chance to be consumed)
+                </span>
+              </Show>
+              <ul class="links">
+                <For each={slot.members.shown}>
+                  {(member) => (
+                    <li>
+                      <LinkButton
+                        link={member}
+                        kind="item"
+                        navigation={props.navigation}
+                      />
+                    </li>
+                  )}
+                </For>
+                <Show when={slot.members.total > slot.members.shown.length}>
+                  <li class="hint">
+                    and{" "}
+                    {(
+                      slot.members.total - slot.members.shown.length
+                    ).toLocaleString()}{" "}
+                    more
+                  </li>
+                </Show>
+              </ul>
+            </li>
+          )}
+        </For>
+      </ul>
+
+      <h4>Outputs ({props.detail.outputs.length})</h4>
+      <ul class="slots">
+        <For each={props.detail.outputs}>
+          {(output) => (
+            <li>
+              {output.count.toLocaleString()}×{" "}
+              <LinkButton
+                link={output.item}
+                kind="item"
+                navigation={props.navigation}
+              />
+              <Show when={output.chance < 1}>
+                <span class="hint"> ({percent(output.chance)} chance)</span>
+              </Show>
+              <Show when={output.edge !== null && output.edge !== "propagate"}>
+                <span class="hint">
+                  {" "}
+                  {output.edge}, by {output.edge_cause}
+                </span>
+              </Show>
+            </li>
+          )}
+        </For>
+      </ul>
+    </>
+  );
+}
