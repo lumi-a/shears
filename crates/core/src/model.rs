@@ -369,6 +369,30 @@ impl Graph {
         &self.recipes
     }
 
+    /// Every item's index in ascending order (so also sorted by [`Item::id`]).
+    ///
+    /// # Panics
+    ///
+    /// If this graph has more than `u32::MAX` items.
+    #[inline]
+    pub fn item_indices(&self) -> impl Iterator<Item = ItemIndex> {
+        (0..self.items.len()).map(|position| {
+            ItemIndex::new(u32::try_from(position).expect("fewer than u32::MAX items"))
+        })
+    }
+
+    /// Every recipe's index in ascending order (so also sorted by [`Recipe::id`]).
+    ///
+    /// # Panics
+    ///
+    /// If this graph has more than `u32::MAX` recipes.
+    #[inline]
+    pub fn recipe_indices(&self) -> impl Iterator<Item = RecipeIndex> {
+        (0..self.recipes.len()).map(|position| {
+            RecipeIndex::new(u32::try_from(position).expect("fewer than u32::MAX recipes"))
+        })
+    }
+
     /// The item at `item`.
     ///
     /// # Panics

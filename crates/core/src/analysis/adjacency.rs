@@ -60,6 +60,59 @@ impl Producers {
     }
 }
 
+/// Reverse index from each item to the recipes that take it as an input.
+#[derive(Debug)]
+pub struct Consumers {
+    /// `consumers[item.index()]` lists every recipe that has `item` in at least one input
+    /// slot. The recipes are in index order, each one once. So each list is effectively a
+    /// sorted set, just cheaper than a `BTreeSet` per item, and [`Consumers::of`] can
+    /// hand out a slice.
+    consumers: Vec<Vec<RecipeIndex>>,
+}
+
+impl Consumers {
+    /// Builds the lookup from every item to the recipes that use it.
+    ///
+    /// # Panics
+    ///
+    /// If a slot member references an item index out of bounds for `graph.items()`.
+    #[inline]
+    #[must_use]
+    pub fn build(graph: &Graph) -> Self {
+        let mut consumers: Vec<Vec<RecipeIndex>> = vec![Vec::new(); graph.items().len()];
+        for recipe in graph.recipe_indices() {
+            for slot in graph.recipe(recipe).inputs() {
+                for member in slot.members() {
+                    let list = consumers
+                        .get_mut(member.index())
+                        .expect("slot member index in bounds for this graph's items");
+                    // Recipes come in index order, so if we have a repeat, then it can only
+                    // be on the last element of the list.
+                    if list.last() != Some(&recipe) {
+                        list.push(recipe);
+                    }
+                }
+            }
+        }
+        Self { consumers }
+    }
+
+    /// Every recipe that takes `item` as an input.
+    ///
+    /// Returned recipe indices are sorted by index.
+    ///
+    /// # Panics
+    ///
+    /// If `item` is out of bounds for the graph this was built from.
+    #[inline]
+    #[must_use]
+    pub fn of(&self, item: ItemIndex) -> &[RecipeIndex] {
+        self.consumers
+            .get(item.index())
+            .expect("item index in bounds for this graph")
+    }
+}
+
 /// Reverse lookup from an item's id to its index.
 ///
 /// Items and recipes share no namespace of their own, so unlike selectors (which can match
@@ -139,11 +192,95 @@ impl RecipesByKey {
     }
 }
 
+/// Every lookup above, built together for one graph.
+///
+/// The graph doesn't change after ingest, so building these once and keeping them is enough.
+#[derive(Debug)]
+pub struct Lookups {
+    /// Item id to index.
+    items: ItemsByKey,
+    /// Recipe id to index.
+    recipes: RecipesByKey,
+    /// Which recipes make each item.
+    producers: Producers,
+    /// Which recipes take each item as an input.
+    consumers: Consumers,
+}
+
+impl Lookups {
+    /// Builds every lookup for `graph`.
+    ///
+    /// # Panics
+    ///
+    /// Whenever one of [`ItemsByKey::build`], [`RecipesByKey::build`], [`Producers::build`] or
+    /// [`Consumers::build`] would.
+    #[inline]
+    #[must_use]
+    pub fn build(graph: &Graph) -> Self {
+        Self {
+            items: ItemsByKey::build(graph),
+            recipes: RecipesByKey::build(graph),
+            producers: Producers::build(graph),
+            consumers: Consumers::build(graph),
+        }
+    }
+
+    /// Item id to index.
+    #[inline]
+    #[must_use]
+    pub const fn items(&self) -> &ItemsByKey {
+        &self.items
+    }
+
+    /// Recipe id to index.
+    #[inline]
+    #[must_use]
+    pub const fn recipes(&self) -> &RecipesByKey {
+        &self.recipes
+    }
+
+    /// Which recipes make each item.
+    #[inline]
+    #[must_use]
+    pub const fn producers(&self) -> &Producers {
+        &self.producers
+    }
+
+    /// Which recipes take each item as an input.
+    #[inline]
+    #[must_use]
+    pub const fn consumers(&self) -> &Consumers {
+        &self.consumers
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ItemsByKey, Producers, RecipesByKey};
+    use super::{Consumers, ItemsByKey, Producers, RecipesByKey};
     use crate::graph_dsl::parse;
     use crate::model::{ItemIndex, RecipeIndex};
+
+    #[test]
+    fn finds_every_recipe_that_takes_an_item_as_input_once() {
+        let (graph, _required) = parse(
+            "
+            required concrete
+            mix: stone_dust + water -> concrete
+            alt: water + sand + water -> concrete
+            ",
+        );
+        let consumers = Consumers::build(&graph);
+
+        // concrete=0, sand=1, stone_dust=2, water=3.
+        // alt=0, mix=1.
+        assert_eq!(consumers.of(ItemIndex::new(0)), &[]);
+        assert_eq!(consumers.of(ItemIndex::new(1)), &[RecipeIndex::new(0)]);
+        assert_eq!(consumers.of(ItemIndex::new(2)), &[RecipeIndex::new(1)]);
+        assert_eq!(
+            consumers.of(ItemIndex::new(3)),
+            &[RecipeIndex::new(0), RecipeIndex::new(1)]
+        );
+    }
 
     #[test]
     fn finds_the_recipe_and_output_position_that_produce_an_item() {
