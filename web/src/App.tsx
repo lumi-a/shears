@@ -1,5 +1,6 @@
 import { createSignal, For, onMount, Show } from "solid-js";
 import { AnalysisView, type AnalysisResult } from "./AnalysisView";
+import { Explorer } from "./Explorer";
 import { ParseReportView } from "./ParseReportView";
 import { RulesPane } from "./RulesPane";
 import {
@@ -153,7 +154,12 @@ function App() {
   );
 
   const explorerPane = (
-    <p class="placeholder">Searching items and recipes WIP.</p>
+    <Show
+      when={info() !== undefined}
+      fallback={<p class="placeholder">No export open yet.</p>}
+    >
+      <Explorer session={session} revision={[info(), analysis()]} />
+    </Show>
   );
 
   // TODO: Would probably be useful to have a "what is this?" or "?" button popup for more

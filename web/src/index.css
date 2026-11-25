@@ -488,3 +488,77 @@ h3 {
   font-size: var(--font-size-small);
   white-space: pre-wrap;
 }
+
+/****************************************************************
+   Explorer
+*****************************************************************/
+
+/* The search bar stays put while the results scroll. */
+.pane-body:has(> .explorer) {
+  overflow: hidden;
+  padding: 0;
+}
+
+.explorer {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  height: 100%;
+}
+
+.explorer-search {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.explorer-search input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-1) var(--space-3);
+  border: none;
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+}
+
+.modes button {
+  height: 100%;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: none;
+  color: var(--fg-muted);
+}
+
+.modes button[aria-checked="true"] {
+  background: var(--bg-subtle);
+  color: var(--fg);
+}
+
+.explorer > .error {
+  padding: var(--space-2) var(--space-3);
+  color: var(--error);
+  font-size: var(--font-size-small);
+}
+
+.explorer-results {
+  overflow: auto;
+  padding: var(--space-2) var(--space-3);
+}
+
+.explorer-results ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+}
+
+.explorer-results li {
+  white-space: nowrap;
+}
+
+/* Not needed by the latest analysis, i.e. what would get hidden. */
+.link-text.dead {
+  color: var(--fg-muted);
+  text-decoration: line-through;
+}
