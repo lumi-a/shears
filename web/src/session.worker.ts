@@ -5,6 +5,9 @@
 import init, { Session } from "./wasm-pkg/shears_wasm";
 import type {
   Analysis,
+  ItemDetail,
+  Links,
+  RecipeDetail,
   Kind,
   ParseReport,
   Request,
@@ -52,6 +55,18 @@ function handle(request: Request): Results[Kind] {
     }
     case "analyze":
       return JSON.parse(current().analyze_json(request.rulesToml)) as Analysis;
+    case "search":
+      return JSON.parse(
+        current().search_json(request.query, request.recipes, request.limit),
+      ) as Links;
+    case "item":
+      return JSON.parse(
+        current().item_json(request.id, request.limit),
+      ) as ItemDetail;
+    case "recipe":
+      return JSON.parse(
+        current().recipe_json(request.id, request.limit),
+      ) as RecipeDetail;
   }
 }
 

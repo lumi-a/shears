@@ -4,7 +4,10 @@
 
 import type {
   Analysis,
+  ItemDetail,
   Kind,
+  Links,
+  RecipeDetail,
   RequestBody,
   Response,
   Results,
@@ -15,6 +18,11 @@ export type {
   Analysis,
   AnalysisDiff,
   Diagnostic,
+  ItemDetail,
+  Link,
+  Links,
+  RecipeDetail,
+  WhyStep,
   ParseReport,
   SessionInfo,
 } from "./session-protocol";
@@ -70,6 +78,23 @@ export class SessionClient {
   // parse.
   analyze(rulesToml: string): Promise<Analysis> {
     return this.#send({ kind: "analyze", rulesToml });
+  }
+
+  // The items (or with `recipes` the recipes) matching `query`: a selector
+  // like a rule's filter, or plain text as one id or /regex/. At most `limit`
+  // of them are shown.
+  search(query: string, recipes: boolean, limit: number): Promise<Links> {
+    return this.#send({ kind: "search", query, recipes, limit });
+  }
+
+  // Everything about one item, each list cut off after `limit`.
+  item(id: string, limit: number): Promise<ItemDetail> {
+    return this.#send({ kind: "item", id, limit });
+  }
+
+  // Everything about one recipe, each slot's members cut off after `limit`.
+  recipe(id: string, limit: number): Promise<RecipeDetail> {
+    return this.#send({ kind: "recipe", id, limit });
   }
 
   // The worker answers a request of kind K with Results[K]. TypeScript can't
