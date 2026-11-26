@@ -25,6 +25,9 @@ Eliminate unneeded recipes in KubeJS Minecraft Modpacks.
   way that the RULES (edit files) tab is tabbed.
 - Perhaps the collapsing of entries (e.g. the "1 file changed" of diffs)
   should only happen above a certain threshold of content within the collapsible
+- Generate web/src/session-protocol.ts's types from the Rust structs the
+  wasm crate serializes (e.g. with ts-rs, or tsify alongside wasm-bindgen),
+  instead of mirroring them by hand.
 
 ## License
 
