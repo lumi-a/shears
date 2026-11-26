@@ -51,9 +51,11 @@ struct Analysis {
     diff: Option<Diff>,
 }
 
-/// What one analysis found transitively required.
+/// What one analysis found transitively required, by id.
 ///
-/// By id rather than index, because we want to be able to compare this after re-ingestion.
+/// Only needed across a re-ingest. A re-ingest can change indices, so the analysis before it
+/// can only be compared by id. Without a re-ingest in between, [`Diff::on_graph`] compares the
+/// kept [`Analyzed`] directly.
 ///
 /// TODO: If we want to be clever and save memory (e.g. because we assume the diff will always
 /// be small?), we could instead do some hash-stuff shenanigans. Something like a hash set, but
@@ -68,10 +70,26 @@ struct Snapshot {
     recipes: BTreeSet<String>,
 }
 
-/// The difference between two [`Snapshot`]s.
+impl Snapshot {
+    /// The ids of everything `live` found transitively required in `graph`.
+    fn of(graph: &Graph, live: &TransitivelyRequired) -> Self {
+        Self {
+            items: live
+                .transitively_required_items()
+                .map(|item| graph.item(item).id().to_owned())
+                .collect(),
+            recipes: live
+                .transitively_required_recipes()
+                .map(|recipe| graph.recipe(recipe).id().to_owned())
+                .collect(),
+        }
+    }
+}
+
+/// The difference between two analyses.
 ///
-/// Every list is sorted the same way [`Snapshot`] is sorted, i.e. the way strings are totally
-/// ordered in Rust.
+/// Every list is sorted by id, the way strings are totally ordered in Rust. That's also the
+/// graph's index order.
 #[derive(Debug, Serialize)]
 struct Diff {
     /// Items that are transitively required now, but weren't before.
@@ -86,7 +104,41 @@ struct Diff {
 
 impl Diff {
     /// What changed from `before` to `now`.
-    fn between(before: &Snapshot, now: &Snapshot) -> Self {
+    fn on_graph(
+        graph: &Graph,
+        before: &TransitivelyRequired,
+        now: &TransitivelyRequired,
+    ) -> Self {
+        let items = |was: bool, is: bool| -> Vec<String> {
+            graph
+                .item_indices()
+                .filter(|&item| {
+                    before.is_transitively_required(item) == was
+                        && now.is_transitively_required(item) == is
+                })
+                .map(|item| graph.item(item).id().to_owned())
+                .collect()
+        };
+        let recipes = |was: bool, is: bool| -> Vec<String> {
+            graph
+                .recipe_indices()
+                .filter(|&recipe| {
+                    before.is_recipe_transitively_required(recipe) == was
+                        && now.is_recipe_transitively_required(recipe) == is
+                })
+                .map(|recipe| graph.recipe(recipe).id().to_owned())
+                .collect()
+        };
+        Self {
+            items_added: items(false, true),
+            items_removed: items(true, false),
+            recipes_added: recipes(false, true),
+            recipes_removed: recipes(true, false),
+        }
+    }
+
+    /// What changed from `before`, an analysis of an earlier graph, to `now`.
+    fn across_graphs(before: &Snapshot, now: &Snapshot) -> Self {
         /// The ids in `now` but not in `before`. Maintains the order.
         fn added(before: &BTreeSet<String>, now: &BTreeSet<String>) -> Vec<String> {
             now.difference(before).cloned().collect()
@@ -129,11 +181,9 @@ struct Links {
 
 /// The latest successful analysis.
 ///
-/// We keep this for the explorer.
-/// TODO: Should we merge this with the state that, for sake of diffing, we already
-/// keep anyway?
+/// Kept for the explorer, and to diff the next analysis against.
 ///
-/// Only valid for the graph it ran on, so a re-ingest drops it.
+/// Only valid for the graph it ran on, so a re-ingest turns it into a [`Snapshot`].
 #[derive(Debug)]
 struct Analyzed {
     /// The rules the analysis ran with, as the one-element list [`RuleSet::apply`]'s `file`
@@ -163,10 +213,11 @@ pub struct Session {
     report: ParseReport,
     /// Lookups into `graph`. For the explorer.
     lookups: Lookups,
-    /// What the latest successful analysis found. Used to diff against the next.
-    previous: Option<Snapshot>,
     /// The latest successful analysis on the current graph.
     analyzed: Option<Analyzed>,
+    /// What the latest successful analysis found, if a re-ingest replaced the graph it ran on
+    /// since. The next analysis diffs against this, since there's no `analyzed` then.
+    before_reingest: Option<Snapshot>,
 }
 
 #[wasm_bindgen]
@@ -195,8 +246,8 @@ impl Session {
             lookups,
             graph,
             report,
-            previous: None,
             analyzed: None,
+            before_reingest: None,
         })
     }
 
@@ -206,15 +257,18 @@ impl Session {
     ///
     /// If `shapes_toml` doesn't parse. The previous graph and report are kept then.
     ///
-    /// Drops the latest analysis, which doesn't apply to the new graph.
-    /// The snapshot to diff against stays, because it's by id.
+    /// The latest analysis doesn't apply to the new graph, so it's kept only by id, to diff
+    /// the next analysis against.
     pub fn reingest(&mut self, shapes_toml: &str) -> Result<(), JsValue> {
         let (graph, report) =
             ingest::ingest(&self.files, shapes_toml).map_err(|error| js_error(&error))?;
+        // Without an analysis since the last re-ingest, the snapshot from before that stays.
+        if let Some(analyzed) = self.analyzed.take() {
+            self.before_reingest = Some(Snapshot::of(&self.graph, &analyzed.live));
+        }
         self.lookups = Lookups::build(&graph);
         self.graph = graph;
         self.report = report;
-        self.analyzed = None;
         Ok(())
     }
 
@@ -268,27 +322,22 @@ impl Session {
         let mut edges = EdgeStates::defaults(&self.graph);
         rules.apply(&self.graph, &mut attrs, &mut edges, 0);
         let live = transitively_required(&self.graph, &attrs, &edges);
-        let snapshot = Snapshot {
-            items: live
-                .transitively_required_items()
-                .map(|item| self.graph.item(item).id().to_owned())
-                .collect(),
-            recipes: live
-                .transitively_required_recipes()
-                .map(|recipe| self.graph.recipe(recipe).id().to_owned())
-                .collect(),
+        let diff = match (&self.analyzed, &self.before_reingest) {
+            (Some(before), _) => Some(Diff::on_graph(&self.graph, &before.live, &live)),
+            (None, Some(before)) => Some(Diff::across_graphs(
+                before,
+                &Snapshot::of(&self.graph, &live),
+            )),
+            (None, None) => None,
         };
         let analysis = Analysis {
             required_count: attrs.required_items().count(),
             transitively_required_item_count: live.transitively_required_item_count(),
             transitively_required_recipe_count: live.transitively_required_recipe_count(),
             warnings: rules.warnings().to_vec(),
-            diff: self
-                .previous
-                .as_ref()
-                .map(|previous| Diff::between(previous, &snapshot)),
+            diff,
         };
-        self.previous = Some(snapshot);
+        self.before_reingest = None;
         self.analyzed = Some(Analyzed {
             rule_sets: vec![rules],
             attrs,
