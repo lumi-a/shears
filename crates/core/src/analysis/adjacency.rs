@@ -257,28 +257,33 @@ impl Lookups {
 #[cfg(test)]
 mod tests {
     use super::{Consumers, ItemsByKey, Producers, RecipesByKey};
-    use crate::graph_dsl::parse;
-    use crate::model::{ItemIndex, RecipeIndex};
+    use crate::graph_dsl::{item, parse, recipe};
 
     #[test]
     fn finds_every_recipe_that_takes_an_item_as_input_once() {
         let (graph, _required) = parse(
             "
-            required concrete
-            mix: stone_dust + water -> concrete
-            alt: water + sand + water -> concrete
+            required iron_pickaxe
+            iron_pickaxe: 3 iron_ingot + 2 stick -> iron_pickaxe
+            iron_nugget: iron_ingot -> 9 iron_nugget
+            iron_block: 5 iron_ingot + 4 iron_ingot -> iron_block
             ",
         );
         let consumers = Consumers::build(&graph);
 
-        // concrete=0, sand=1, stone_dust=2, water=3.
-        // alt=0, mix=1.
-        assert_eq!(consumers.of(ItemIndex::new(0)), &[]);
-        assert_eq!(consumers.of(ItemIndex::new(1)), &[RecipeIndex::new(0)]);
-        assert_eq!(consumers.of(ItemIndex::new(2)), &[RecipeIndex::new(1)]);
+        assert_eq!(consumers.of(item(&graph, "iron_pickaxe")), &[]);
         assert_eq!(
-            consumers.of(ItemIndex::new(3)),
-            &[RecipeIndex::new(0), RecipeIndex::new(1)]
+            consumers.of(item(&graph, "stick")),
+            &[recipe(&graph, "iron_pickaxe")]
+        );
+        // In index order, which is id order, and iron_block only once.
+        assert_eq!(
+            consumers.of(item(&graph, "iron_ingot")),
+            &[
+                recipe(&graph, "iron_block"),
+                recipe(&graph, "iron_nugget"),
+                recipe(&graph, "iron_pickaxe"),
+            ]
         );
     }
 
@@ -286,52 +291,52 @@ mod tests {
     fn finds_the_recipe_and_output_position_that_produce_an_item() {
         let (graph, _required) = parse(
             "
-            required concrete
-            mix: stone_dust + water -> concrete
+            required iron_pickaxe
+            iron_pickaxe: 3 iron_ingot + 2 stick -> iron_pickaxe
             ",
         );
         let producers = Producers::build(&graph);
 
-        // Sorted item order: concrete=0, stone_dust=1, water=2.
-        assert_eq!(producers.of(ItemIndex::new(0)), &[(RecipeIndex::new(0), 0)]);
-        assert_eq!(producers.of(ItemIndex::new(1)), &[]);
-        assert_eq!(producers.of(ItemIndex::new(2)), &[]);
+        assert_eq!(
+            producers.of(item(&graph, "iron_pickaxe")),
+            &[(recipe(&graph, "iron_pickaxe"), 0)]
+        );
+        assert_eq!(producers.of(item(&graph, "iron_ingot")), &[]);
+        assert_eq!(producers.of(item(&graph, "stick")), &[]);
     }
 
     #[test]
     fn aggregates_producers_across_different_recipes() {
         let (graph, _required) = parse(
             "
-            required concrete
-            mix: stone_dust + water -> concrete
-            alt: sand + water -> concrete
+            iron_ingot_from_nuggets: 9 iron_nugget -> iron_ingot
+            iron_ingot_from_smelting_raw_iron: raw_iron -> iron_ingot
             ",
         );
         let producers = Producers::build(&graph);
 
-        // Sorted recipe order: alt=0, mix=1.
         assert_eq!(
-            producers.of(ItemIndex::new(0)),
-            &[(RecipeIndex::new(0), 0), (RecipeIndex::new(1), 0)]
+            producers.of(item(&graph, "iron_ingot")),
+            &[
+                (recipe(&graph, "iron_ingot_from_nuggets"), 0),
+                (recipe(&graph, "iron_ingot_from_smelting_raw_iron"), 0),
+            ]
         );
     }
 
     #[test]
     fn keeps_both_entries_when_one_recipe_outputs_the_same_item_twice() {
-        // E.g. a macerator recipe with a guaranteed dust output and a
-        // separate chance-based bonus dust output of the same item.
         let (graph, _required) = parse(
             "
-            required dust
-            macerate: ore -> 2 dust + 13 useless + 1 dust
+            gtceu:arc_furnace/arc_max_electric_pump: monilabs:max_electric_pump -> 64 gtceu:monium_ingot + 12 gtceu:meta_null_ingot + 4 gtceu:monium_ingot + 2 gtceu:terbium_ingot
             ",
         );
         let producers = Producers::build(&graph);
 
-        // Sorted item order: dust=0, ore=1.
+        let recycling = recipe(&graph, "gtceu:arc_furnace/arc_max_electric_pump");
         assert_eq!(
-            producers.of(ItemIndex::new(0)),
-            &[(RecipeIndex::new(0), 0), (RecipeIndex::new(0), 2)]
+            producers.of(item(&graph, "gtceu:monium_ingot")),
+            &[(recycling, 0), (recycling, 2)]
         );
     }
 
@@ -339,53 +344,54 @@ mod tests {
     fn items_by_key_finds_the_index_of_a_known_id() {
         let (graph, _required) = parse(
             "
-            required concrete
-            mix: stone_dust + water -> concrete
+            required iron_pickaxe
+            iron_pickaxe: 3 iron_ingot + 2 stick -> iron_pickaxe
             ",
         );
         let by_key = ItemsByKey::build(&graph);
 
-        // Sorted item order: concrete=0, stone_dust=1, water=2.
-        assert_eq!(by_key.index_of("concrete"), Some(ItemIndex::new(0)));
-        assert_eq!(by_key.index_of("stone_dust"), Some(ItemIndex::new(1)));
-        assert_eq!(by_key.index_of("water"), Some(ItemIndex::new(2)));
+        for id in ["iron_pickaxe", "iron_ingot", "stick"] {
+            assert_eq!(by_key.index_of(id), Some(item(&graph, id)), "{id}");
+        }
     }
 
     #[test]
     fn items_by_key_returns_none_for_an_unknown_id() {
         let (graph, _required) = parse(
             "
-            required concrete
-            mix: stone_dust + water -> concrete
+            required iron_pickaxe
+            iron_pickaxe: 3 iron_ingot + 2 stick -> iron_pickaxe
             ",
         );
         let by_key = ItemsByKey::build(&graph);
 
-        assert_eq!(by_key.index_of("minecraft:dirt"), None);
+        assert_eq!(by_key.index_of("dirt"), None);
     }
 
     #[test]
     fn recipes_by_key_finds_the_index_of_a_known_id() {
         let (graph, _required) = parse(
             "
-            required concrete
-            mix: stone_dust + water -> concrete
-            alt: sand + water -> concrete
+            iron_ingot_from_nuggets: 9 iron_nugget -> iron_ingot
+            iron_ingot_from_smelting_raw_iron: raw_iron -> iron_ingot
             ",
         );
         let by_key = RecipesByKey::build(&graph);
 
-        // Sorted recipe order: alt=0, mix=1.
-        assert_eq!(by_key.index_of("alt"), Some(RecipeIndex::new(0)));
-        assert_eq!(by_key.index_of("mix"), Some(RecipeIndex::new(1)));
+        for id in [
+            "iron_ingot_from_nuggets",
+            "iron_ingot_from_smelting_raw_iron",
+        ] {
+            assert_eq!(by_key.index_of(id), Some(recipe(&graph, id)), "{id}");
+        }
     }
 
     #[test]
     fn recipes_by_key_returns_none_for_an_unknown_id() {
         let (graph, _required) = parse(
             "
-            required concrete
-            mix: stone_dust + water -> concrete
+            required iron_pickaxe
+            iron_pickaxe: 3 iron_ingot + 2 stick -> iron_pickaxe
             ",
         );
         let by_key = RecipesByKey::build(&graph);

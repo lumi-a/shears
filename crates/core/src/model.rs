@@ -489,32 +489,32 @@ mod tests {
 
     #[test]
     fn item_returns_the_item_at_that_index() {
-        let (graph, _required) = graph_dsl::parse("mix: stone_dust -> concrete");
+        let (graph, _required) = graph_dsl::parse("oak_planks: oak_log -> 4 oak_planks");
 
-        // Sorted item order: concrete=0, stone_dust=1.
-        assert_eq!(graph.item(ItemIndex::new(0)).id(), "concrete");
-        assert_eq!(graph.item(ItemIndex::new(1)).id(), "stone_dust");
+        // Items are sorted by id.
+        assert_eq!(graph.item(ItemIndex::new(0)).id(), "oak_log");
+        assert_eq!(graph.item(ItemIndex::new(1)).id(), "oak_planks");
     }
 
     #[test]
     #[should_panic(expected = "item index in bounds")]
     fn item_panics_on_an_out_of_bounds_index() {
-        let (graph, _required) = graph_dsl::parse("mix: stone_dust -> concrete");
+        let (graph, _required) = graph_dsl::parse("oak_planks: oak_log -> 4 oak_planks");
 
         let _item = graph.item(ItemIndex::new(2));
     }
 
     #[test]
     fn recipe_returns_the_recipe_at_that_index() {
-        let (graph, _required) = graph_dsl::parse("mix: stone_dust -> concrete");
+        let (graph, _required) = graph_dsl::parse("oak_planks: oak_log -> 4 oak_planks");
 
-        assert_eq!(graph.recipe(super::RecipeIndex::new(0)).id(), "mix");
+        assert_eq!(graph.recipe(super::RecipeIndex::new(0)).id(), "oak_planks");
     }
 
     #[test]
     #[should_panic(expected = "recipe index in bounds")]
     fn recipe_panics_on_an_out_of_bounds_index() {
-        let (graph, _required) = graph_dsl::parse("mix: stone_dust -> concrete");
+        let (graph, _required) = graph_dsl::parse("oak_planks: oak_log -> 4 oak_planks");
 
         let _recipe = graph.recipe(super::RecipeIndex::new(1));
     }

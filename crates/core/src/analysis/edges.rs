@@ -310,39 +310,30 @@ impl NodeAttrs {
 #[cfg(test)]
 mod tests {
     use super::{Cause, EdgeState, EdgeStates, NodeAttrs, RuleKind};
-    use crate::graph_dsl::parse;
-    use crate::model::{ItemIndex, RecipeIndex};
+    use crate::graph_dsl::{item, parse, recipe};
+
+    /// One recipe with one output, and items both with and without a producer.
+    const PICKAXE: &str = "iron_pickaxe: 3 iron_ingot + 2 stick -> iron_pickaxe";
 
     #[test]
     fn defaults_are_propagate_with_no_cause_and_shaped_like_the_graph() {
-        let (graph, _required) = parse(
-            "
-            required concrete
-            mix: stone_dust + water -> concrete
-            ",
-        );
+        let (graph, _required) = parse(PICKAXE);
+        let crafting = recipe(&graph, "iron_pickaxe");
         let edges = EdgeStates::defaults(&graph);
 
-        assert_eq!(edges.states(RecipeIndex::new(0)), &[EdgeState::Propagate]);
-        assert_eq!(edges.state(RecipeIndex::new(0), 0), EdgeState::Propagate);
-        assert!(matches!(
-            edges.cause(RecipeIndex::new(0), 0),
-            Cause::Default
-        ));
+        assert_eq!(edges.states(crafting), &[EdgeState::Propagate]);
+        assert_eq!(edges.state(crafting, 0), EdgeState::Propagate);
+        assert!(matches!(edges.cause(crafting, 0), Cause::Default));
     }
 
     #[test]
     fn set_updates_state_and_cause_together() {
-        let (graph, _required) = parse(
-            "
-            required concrete
-            mix: stone_dust + water -> concrete
-            ",
-        );
+        let (graph, _required) = parse(PICKAXE);
+        let crafting = recipe(&graph, "iron_pickaxe");
         let mut edges = EdgeStates::defaults(&graph);
 
         edges.set(
-            RecipeIndex::new(0),
+            crafting,
             0,
             EdgeState::Dropped,
             Cause::Rule {
@@ -352,9 +343,9 @@ mod tests {
             },
         );
 
-        assert_eq!(edges.state(RecipeIndex::new(0), 0), EdgeState::Dropped);
+        assert_eq!(edges.state(crafting, 0), EdgeState::Dropped);
         assert!(matches!(
-            edges.cause(RecipeIndex::new(0), 0),
+            edges.cause(crafting, 0),
             Cause::Rule {
                 file: 0,
                 kind: RuleKind::Recipe,
@@ -366,109 +357,83 @@ mod tests {
     #[test]
     #[should_panic(expected = "output index in bounds")]
     fn state_panics_on_an_out_of_bounds_output() {
-        let (graph, _required) = parse(
-            "
-            required concrete
-            mix: stone_dust + water -> concrete
-            ",
-        );
+        let (graph, _required) = parse(PICKAXE);
         let edges = EdgeStates::defaults(&graph);
 
-        let _state = edges.state(RecipeIndex::new(0), 1);
+        let _state = edges.state(recipe(&graph, "iron_pickaxe"), 1);
     }
 
     #[test]
     fn defaults_required_and_source_nothing_even_producerless_items() {
-        let (graph, _required) = parse(
-            "
-            required concrete
-            mix: stone_dust + water -> concrete
-            ",
-        );
+        let (graph, _required) = parse(PICKAXE);
         let attrs = NodeAttrs::defaults(&graph);
+        let iron_pickaxe = item(&graph, "iron_pickaxe");
 
-        // Sorted item order: concrete=0, stone_dust=1, water=2.
-        assert!(!attrs.is_required(ItemIndex::new(0)));
-        assert!(attrs.required_cause(ItemIndex::new(0)).is_none());
+        assert!(!attrs.is_required(iron_pickaxe));
+        assert!(attrs.required_cause(iron_pickaxe).is_none());
 
-        // stone_dust and water have no producer in this fixture.
-        assert!(!attrs.is_world_source(ItemIndex::new(0)));
-        assert!(!attrs.is_world_source(ItemIndex::new(1)));
-        assert!(!attrs.is_world_source(ItemIndex::new(2)));
+        // iron_ingot and stick have no producer in this fixture.
+        for id in ["iron_pickaxe", "iron_ingot", "stick"] {
+            assert!(!attrs.is_world_source(item(&graph, id)), "{id}");
+        }
     }
 
     #[test]
     fn set_world_source_marks_only_that_item() {
-        let (graph, _required) = parse(
-            "
-            required concrete
-            mix: stone_dust + water -> concrete
-            ",
-        );
+        let (graph, _required) = parse(PICKAXE);
         let mut attrs = NodeAttrs::defaults(&graph);
 
-        attrs.set_world_source(ItemIndex::new(1));
+        attrs.set_world_source(item(&graph, "iron_ingot"));
 
-        assert!(attrs.is_world_source(ItemIndex::new(1)));
-        assert!(!attrs.is_world_source(ItemIndex::new(0)));
-        assert!(!attrs.is_world_source(ItemIndex::new(2)));
+        assert!(attrs.is_world_source(item(&graph, "iron_ingot")));
+        assert!(!attrs.is_world_source(item(&graph, "iron_pickaxe")));
+        assert!(!attrs.is_world_source(item(&graph, "stick")));
     }
 
     #[test]
     fn set_required_marks_the_item_and_records_the_cause() {
-        let (graph, _required) = parse(
-            "
-            required concrete
-            mix: stone_dust + water -> concrete
-            ",
-        );
+        let (graph, _required) = parse(PICKAXE);
+        let iron_ingot = item(&graph, "iron_ingot");
         let mut attrs = NodeAttrs::defaults(&graph);
 
-        attrs.set_required(ItemIndex::new(1), Cause::Pseudo);
+        attrs.set_required(iron_ingot, Cause::Pseudo);
 
-        assert!(attrs.is_required(ItemIndex::new(1)));
+        assert!(attrs.is_required(iron_ingot));
         assert!(matches!(
-            attrs.required_cause(ItemIndex::new(1)),
+            attrs.required_cause(iron_ingot),
             Some(Cause::Pseudo)
         ));
         assert!(
-            !attrs.is_required(ItemIndex::new(0)),
+            !attrs.is_required(item(&graph, "iron_pickaxe")),
             "unrelated items stay unrequired"
         );
     }
 
     #[test]
     fn clear_required_unmarks_the_item_and_its_cause() {
-        let (graph, _required) = parse(
-            "
-            required concrete
-            mix: stone_dust + water -> concrete
-            ",
-        );
+        let (graph, _required) = parse(PICKAXE);
+        let iron_ingot = item(&graph, "iron_ingot");
         let mut attrs = NodeAttrs::defaults(&graph);
-        attrs.set_required(ItemIndex::new(1), Cause::Pseudo);
+        attrs.set_required(iron_ingot, Cause::Pseudo);
 
-        attrs.clear_required(ItemIndex::new(1));
+        attrs.clear_required(iron_ingot);
 
-        assert!(!attrs.is_required(ItemIndex::new(1)));
-        assert!(attrs.required_cause(ItemIndex::new(1)).is_none());
+        assert!(!attrs.is_required(iron_ingot));
+        assert!(attrs.required_cause(iron_ingot).is_none());
     }
 
     #[test]
     fn clear_world_source_unmarks_only_that_item() {
-        let (graph, _required) = parse(
-            "
-            required concrete
-            mix: stone_dust + water -> concrete
-            ",
-        );
+        let (graph, _required) = parse(PICKAXE);
+        let iron_ingot = item(&graph, "iron_ingot");
+        let stick = item(&graph, "stick");
         let mut attrs = NodeAttrs::defaults(&graph);
-        attrs.set_world_source(ItemIndex::new(1));
-        attrs.set_world_source(ItemIndex::new(2));
+        attrs.set_world_source(iron_ingot);
+        attrs.set_world_source(stick);
 
-        attrs.clear_world_source(ItemIndex::new(1));
+        attrs.clear_world_source(iron_ingot);
 
-        assert!(!attrs.is_world_source(ItemIndex::new(1)));
-        assert!(attrs.is_world_source(ItemIndex::new(2)));
+        assert!(!attrs.is_world_source(iron_ingot));
+        assert!(attrs.is_world_source(stick));
     }
 }

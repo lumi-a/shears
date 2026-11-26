@@ -269,16 +269,16 @@ mod tests {
     use super::{Why, naive_transitively_required, transitively_required};
     use crate::analysis::edges::{Cause, EdgeState, EdgeStates, NodeAttrs};
     use crate::analysis::proptest_support::arb_graph_attrs_edges;
-    use crate::graph_dsl::parse;
+    use crate::graph_dsl::{item, parse, recipe};
     use crate::model::{ItemIndex, RecipeIndex};
 
     #[test]
     fn iterates_only_transitively_required_items_and_recipes() {
         let (graph, required_items) = parse(
             "
-            required concrete
-            mix: stone_dust + water -> concrete
-            smelt: ore -> ingot
+            required iron_pickaxe
+            iron_pickaxe: 3 iron_ingot + 2 stick -> iron_pickaxe
+            oak_planks: oak_log -> 4 oak_planks
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
@@ -297,16 +297,16 @@ mod tests {
             .transitively_required_recipes()
             .map(|recipe| graph.recipe(recipe).id())
             .collect();
-        assert_eq!(items, ["concrete", "stone_dust", "water"]);
-        assert_eq!(recipes, ["mix"]);
+        assert_eq!(items, ["iron_ingot", "iron_pickaxe", "stick"]);
+        assert_eq!(recipes, ["iron_pickaxe"]);
     }
 
     #[test]
     fn marks_required_items_and_their_producer_chain_transitively_required() {
         let (graph, required_items) = parse(
             "
-            required concrete
-            mix: stone_dust + water -> concrete
+            required iron_pickaxe
+            iron_pickaxe: 3 iron_ingot + 2 stick -> iron_pickaxe
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
@@ -317,34 +317,32 @@ mod tests {
 
         let live = transitively_required(&graph, &attrs, &edges);
 
-        // Sorted item order: concrete=0, stone_dust=1, water=2.
-        // Sorted recipe order: mix=0.
-        let concrete = ItemIndex::new(0);
-        let stone_dust = ItemIndex::new(1);
-        let water = ItemIndex::new(2);
-        let mix = RecipeIndex::new(0);
+        let iron_pickaxe = item(&graph, "iron_pickaxe");
+        let iron_ingot = item(&graph, "iron_ingot");
+        let stick = item(&graph, "stick");
+        let crafting = recipe(&graph, "iron_pickaxe");
 
-        assert!(live.is_transitively_required(concrete));
-        assert!(live.is_transitively_required(stone_dust));
-        assert!(live.is_transitively_required(water));
-        assert!(live.is_recipe_transitively_required(mix));
+        assert!(live.is_transitively_required(iron_pickaxe));
+        assert!(live.is_transitively_required(iron_ingot));
+        assert!(live.is_transitively_required(stick));
+        assert!(live.is_recipe_transitively_required(crafting));
 
         assert!(matches!(
-            live.why(concrete),
+            live.why(iron_pickaxe),
             Some(Why::Required(Cause::Pseudo))
         ));
         assert!(matches!(
-            live.why(stone_dust),
-            Some(Why::Via { recipe, output }) if *recipe == mix && *output == concrete
+            live.why(iron_ingot),
+            Some(Why::Via { recipe, output }) if *recipe == crafting && *output == iron_pickaxe
         ));
     }
 
     #[test]
-    fn stone_dust_cycle_dies_entirely_when_nothing_is_required() {
+    fn nugget_cycle_dies_entirely_when_nothing_is_required() {
         let (graph, required_items) = parse(
             "
-            pack:   4 small_stone_dust -> stone_dust
-            unpack: stone_dust -> 4 small_stone_dust
+            iron_ingot_from_nuggets: 9 iron_nugget -> iron_ingot
+            iron_nugget: iron_ingot -> 9 iron_nugget
             ",
         );
         assert!(
@@ -356,22 +354,22 @@ mod tests {
 
         let live = transitively_required(&graph, &attrs, &edges);
 
-        // Sorted item order: small_stone_dust=0, stone_dust=1.
-        // Sorted recipe order: pack=0, unpack=1.
-        assert!(!live.is_transitively_required(ItemIndex::new(0)));
-        assert!(!live.is_transitively_required(ItemIndex::new(1)));
-        assert!(!live.is_recipe_transitively_required(RecipeIndex::new(0)));
-        assert!(!live.is_recipe_transitively_required(RecipeIndex::new(1)));
+        assert!(!live.is_transitively_required(item(&graph, "iron_ingot")));
+        assert!(!live.is_transitively_required(item(&graph, "iron_nugget")));
+        assert!(
+            !live.is_recipe_transitively_required(recipe(&graph, "iron_ingot_from_nuggets"))
+        );
+        assert!(!live.is_recipe_transitively_required(recipe(&graph, "iron_nugget")));
     }
 
     #[test]
-    fn stone_dust_used_keeps_small_dust_dead_if_packing_is_marked_inert() {
+    fn iron_ingot_used_keeps_nuggets_dead_if_ingot_from_nuggets_is_inert() {
         let (graph, required_items) = parse(
             "
-            required concrete
-            mix:    stone_dust + water -> concrete
-            pack:   4 small_stone_dust -> stone_dust
-            unpack: stone_dust -> 4 small_stone_dust
+            required iron_pickaxe
+            iron_pickaxe:            3 iron_ingot + 2 stick -> iron_pickaxe
+            iron_ingot_from_nuggets: 9 iron_nugget -> iron_ingot
+            iron_nugget:             iron_ingot -> 9 iron_nugget
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
@@ -380,42 +378,40 @@ mod tests {
         }
         let mut edges = EdgeStates::defaults(&graph);
 
-        // Sorted recipe order: mix=0, pack=1, unpack=2.
-        // pack's only output is stone_dust, at position 0.
-        let pack = RecipeIndex::new(1);
-        edges.set(pack, 0, EdgeState::Inert, Cause::Default);
+        // Its only output is iron_ingot, at position 0.
+        let from_nuggets = recipe(&graph, "iron_ingot_from_nuggets");
+        edges.set(from_nuggets, 0, EdgeState::Inert, Cause::Default);
 
         let live = transitively_required(&graph, &attrs, &edges);
 
-        // Sorted item order: concrete=0, small_stone_dust=1, stone_dust=2, water=3.
         assert!(
-            live.is_transitively_required(ItemIndex::new(0)),
-            "concrete: required"
+            live.is_transitively_required(item(&graph, "iron_pickaxe")),
+            "iron_pickaxe: required"
         );
         assert!(
-            !live.is_transitively_required(ItemIndex::new(1)),
-            "small_stone_dust: only reachable through pack's inert edge"
+            !live.is_transitively_required(item(&graph, "iron_nugget")),
+            "iron_nugget: only reachable through iron_ingot_from_nuggets' inert edge"
         );
         assert!(
-            live.is_transitively_required(ItemIndex::new(2)),
-            "stone_dust: used by mix"
+            live.is_transitively_required(item(&graph, "iron_ingot")),
+            "iron_ingot: used by iron_pickaxe"
         );
         assert!(
-            live.is_transitively_required(ItemIndex::new(3)),
-            "water: used by mix"
+            live.is_transitively_required(item(&graph, "stick")),
+            "stick: used by iron_pickaxe"
         );
 
         assert!(
-            live.is_recipe_transitively_required(RecipeIndex::new(0)),
-            "mix propagates"
+            live.is_recipe_transitively_required(recipe(&graph, "iron_pickaxe")),
+            "iron_pickaxe propagates"
         );
         assert!(
-            !live.is_recipe_transitively_required(pack),
-            "pack's only edge is inert"
+            !live.is_recipe_transitively_required(from_nuggets),
+            "iron_ingot_from_nuggets' only edge is inert"
         );
         assert!(
-            !live.is_recipe_transitively_required(RecipeIndex::new(2)),
-            "unpack's output never becomes transitively required"
+            !live.is_recipe_transitively_required(recipe(&graph, "iron_nugget")),
+            "iron_nugget's output never becomes transitively required"
         );
     }
 
@@ -423,8 +419,8 @@ mod tests {
     fn dropped_edge_also_blocks_propagation() {
         let (graph, required_items) = parse(
             "
-            required concrete
-            mix: stone_dust + water -> concrete
+            required iron_pickaxe
+            iron_pickaxe: 3 iron_ingot + 2 stick -> iron_pickaxe
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
@@ -432,34 +428,34 @@ mod tests {
             attrs.set_required(required, Cause::Pseudo);
         }
         let mut edges = EdgeStates::defaults(&graph);
-        edges.set(RecipeIndex::new(0), 0, EdgeState::Dropped, Cause::Default);
+        let crafting = recipe(&graph, "iron_pickaxe");
+        edges.set(crafting, 0, EdgeState::Dropped, Cause::Default);
 
         let live = transitively_required(&graph, &attrs, &edges);
 
-        // Sorted item order: concrete=0, stone_dust=1, water=2.
         assert!(
-            live.is_transitively_required(ItemIndex::new(0)),
-            "concrete: required"
+            live.is_transitively_required(item(&graph, "iron_pickaxe")),
+            "iron_pickaxe: required"
         );
         assert!(
-            !live.is_transitively_required(ItemIndex::new(1)),
-            "mix's edge is dropped"
+            !live.is_transitively_required(item(&graph, "iron_ingot")),
+            "the crafting recipe's edge is dropped"
         );
         assert!(
-            !live.is_transitively_required(ItemIndex::new(2)),
-            "mix's edge is dropped"
+            !live.is_transitively_required(item(&graph, "stick")),
+            "the crafting recipe's edge is dropped"
         );
-        assert!(!live.is_recipe_transitively_required(RecipeIndex::new(0)));
+        assert!(!live.is_recipe_transitively_required(crafting));
     }
 
     #[test]
     fn propagates_through_multiple_recipe_hops() {
         let (graph, required_items) = parse(
             "
-            required plate
-            press: ingot -> plate
-            smelt: ore -> ingot
-            mine:  dirt -> ore
+            required iron_pickaxe
+            iron_pickaxe:                      3 iron_ingot + 2 stick -> iron_pickaxe
+            iron_ingot_from_smelting_raw_iron: raw_iron -> iron_ingot
+            raw_iron:                          raw_iron_block -> 9 raw_iron
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
@@ -470,43 +466,41 @@ mod tests {
 
         let live = transitively_required(&graph, &attrs, &edges);
 
-        // Sorted item order: dirt=0, ingot=1, ore=2, plate=3.
-        let dirt = ItemIndex::new(0);
-        let ingot = ItemIndex::new(1);
-        let ore = ItemIndex::new(2);
-        let plate = ItemIndex::new(3);
+        let iron_pickaxe = item(&graph, "iron_pickaxe");
+        let iron_ingot = item(&graph, "iron_ingot");
+        let raw_iron = item(&graph, "raw_iron");
+        let raw_iron_block = item(&graph, "raw_iron_block");
 
-        // Sorted recipe order: mine=0, press=1, smelt=2.
-        let mine = RecipeIndex::new(0);
-        let press = RecipeIndex::new(1);
-        let smelt = RecipeIndex::new(2);
+        let crafting = recipe(&graph, "iron_pickaxe");
+        let smelting = recipe(&graph, "iron_ingot_from_smelting_raw_iron");
+        let unpacking = recipe(&graph, "raw_iron");
 
         assert!(
-            live.is_transitively_required(dirt),
+            live.is_transitively_required(raw_iron_block),
             "three hops from the required item"
         );
-        assert!(live.is_transitively_required(ingot));
-        assert!(live.is_transitively_required(ore));
-        assert!(live.is_transitively_required(plate));
-        assert!(live.is_recipe_transitively_required(mine));
-        assert!(live.is_recipe_transitively_required(press));
-        assert!(live.is_recipe_transitively_required(smelt));
+        assert!(live.is_transitively_required(raw_iron));
+        assert!(live.is_transitively_required(iron_ingot));
+        assert!(live.is_transitively_required(iron_pickaxe));
+        assert!(live.is_recipe_transitively_required(crafting));
+        assert!(live.is_recipe_transitively_required(smelting));
+        assert!(live.is_recipe_transitively_required(unpacking));
 
         assert!(matches!(
-            live.why(plate),
+            live.why(iron_pickaxe),
             Some(Why::Required(Cause::Pseudo))
         ));
         assert!(matches!(
-            live.why(ingot),
-            Some(Why::Via { recipe, output }) if *recipe == press && *output == plate
+            live.why(iron_ingot),
+            Some(Why::Via { recipe, output }) if *recipe == crafting && *output == iron_pickaxe
         ));
         assert!(matches!(
-            live.why(ore),
-            Some(Why::Via { recipe, output }) if *recipe == smelt && *output == ingot
+            live.why(raw_iron),
+            Some(Why::Via { recipe, output }) if *recipe == smelting && *output == iron_ingot
         ));
         assert!(matches!(
-            live.why(dirt),
-            Some(Why::Via { recipe, output }) if *recipe == mine && *output == ore
+            live.why(raw_iron_block),
+            Some(Why::Via { recipe, output }) if *recipe == unpacking && *output == raw_iron
         ));
     }
 
@@ -514,11 +508,10 @@ mod tests {
     fn shortest_path_gets_attributed_by_why() {
         let (graph, required_items) = parse(
             "
-            required a
-            required b
-            short: shared -> a
-            long1: mid -> b
-            long2: shared -> mid
+            required crafting_table torch
+            crafting_table: 4 oak_planks -> crafting_table
+            stick:          2 oak_planks -> 4 stick
+            torch:          coal + stick -> 4 torch
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
@@ -529,15 +522,11 @@ mod tests {
 
         let live = transitively_required(&graph, &attrs, &edges);
 
-        // Sorted item order: a=0, b=1, mid=2, shared=3.
-        let a = ItemIndex::new(0);
-        let shared = ItemIndex::new(3);
-        // Sorted recipe order: long1=0, long2=1, short=2.
-        let short = RecipeIndex::new(2);
-
+        let crafting_table = item(&graph, "crafting_table");
+        let table_recipe = recipe(&graph, "crafting_table");
         assert!(matches!(
-            live.why(shared),
-            Some(Why::Via { recipe, output }) if *recipe == short && *output == a
+            live.why(item(&graph, "oak_planks")),
+            Some(Why::Via { recipe, output }) if *recipe == table_recipe && *output == crafting_table
         ));
     }
 

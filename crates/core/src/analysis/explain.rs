@@ -79,18 +79,17 @@ mod tests {
     use super::{cause_text, witness};
     use crate::analysis::edges::{Cause, EdgeStates, NodeAttrs, RuleKind};
     use crate::analysis::transitively_required::transitively_required;
-    use crate::graph_dsl::parse;
-    use crate::model::ItemIndex;
+    use crate::graph_dsl::{item, parse};
     use crate::rules::RuleSet;
 
     #[test]
     fn witness_walks_the_full_chain_to_a_required_item() {
         let (graph, required_items) = parse(
             "
-            required plate
-            press: ingot -> plate
-            smelt: raw -> ingot
-            mine:  ore -> raw
+            required iron_pickaxe
+            iron_pickaxe:                      3 iron_ingot + 2 stick -> iron_pickaxe
+            iron_ingot_from_smelting_raw_iron: raw_iron -> iron_ingot
+            raw_iron:                          raw_iron_block -> 9 raw_iron
             ",
         );
         let mut attrs = NodeAttrs::defaults(&graph);
@@ -100,15 +99,15 @@ mod tests {
         let edges = EdgeStates::defaults(&graph);
         let live = transitively_required(&graph, &attrs, &edges);
 
-        // Sorted item order: ingot=0, ore=1, plate=2, raw=3.
-        let ore = ItemIndex::new(1);
+        let raw_iron_block = item(&graph, "raw_iron_block");
 
-        let text = witness(&graph, &live, &[], ore).expect("ore is transitively required");
+        let text = witness(&graph, &live, &[], raw_iron_block)
+            .expect("raw_iron_block is transitively required");
 
         assert_eq!(
             text,
-            "ore →[mine] raw →[smelt] ingot →[press] plate \
-             (required: built in (a pseudo-item))"
+            "raw_iron_block →[raw_iron] raw_iron →[iron_ingot_from_smelting_raw_iron] \
+             iron_ingot →[iron_pickaxe] iron_pickaxe (required: built in (a pseudo-item))"
         );
     }
 
@@ -116,14 +115,14 @@ mod tests {
     fn witness_names_the_rule_behind_a_required_item() {
         let (graph, _required) = parse(
             "
-            mix: stone_dust + water -> concrete
+            iron_pickaxe: 3 iron_ingot + 2 stick -> iron_pickaxe
             ",
         );
         let rules = RuleSet::parse(
             r#"
             [[item-rule]]
-            reason = "concrete is required for building"
-            filter = { id = "concrete" }
+            reason = "players mine with it"
+            filter = { id = "iron_pickaxe" }
             action = { required = true }
             "#,
         )
@@ -133,15 +132,14 @@ mod tests {
         rules.apply(&graph, &mut attrs, &mut edges, 0);
         let live = transitively_required(&graph, &attrs, &edges);
 
-        // Sorted item order: concrete=0, stone_dust=1, water=2.
-        let concrete = ItemIndex::new(0);
+        let iron_pickaxe = item(&graph, "iron_pickaxe");
 
-        let text =
-            witness(&graph, &live, &[rules], concrete).expect("concrete is required directly");
+        let text = witness(&graph, &live, &[rules], iron_pickaxe)
+            .expect("iron_pickaxe is required directly");
 
         assert_eq!(
             text,
-            "concrete (required: rule \"concrete is required for building\")"
+            "iron_pickaxe (required: rule \"players mine with it\")"
         );
     }
 
@@ -149,14 +147,14 @@ mod tests {
     fn witness_returns_none_for_a_dead_item() {
         let (graph, _required) = parse(
             "
-            mix: stone_dust + water -> concrete
+            iron_pickaxe: 3 iron_ingot + 2 stick -> iron_pickaxe
             ",
         );
         let attrs = NodeAttrs::defaults(&graph);
         let edges = EdgeStates::defaults(&graph);
         let live = transitively_required(&graph, &attrs, &edges);
 
-        assert!(witness(&graph, &live, &[], ItemIndex::new(0)).is_none());
+        assert!(witness(&graph, &live, &[], item(&graph, "iron_pickaxe")).is_none());
     }
 
     #[test]

@@ -455,9 +455,9 @@ const fn is_catalyst(chance: f32) -> bool {
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::{matches_item, matches_recipe, parse, Context, Selector, SelectorError};
-    use crate::graph_dsl::parse as parse_graph;
-    use crate::model::{Graph, Item, ItemIndex, ItemKind, Output, Recipe, RecipeIndex, Slot};
+    use super::{Context, Selector, SelectorError, matches_item, matches_recipe, parse};
+    use crate::graph_dsl::{item, parse as parse_graph, recipe};
+    use crate::model::{Graph, Item, ItemIndex, ItemKind, Output, Recipe, Slot};
 
     fn selector(toml: &str, context: Context) -> Selector {
         let value: toml::Value = toml::from_str(toml).expect("valid test TOML");
@@ -492,96 +492,179 @@ mod tests {
 
     #[test]
     fn exact_id_matches_only_that_id() {
-        let (graph, _required) = parse_graph("mix: stone_dust -> concrete");
-        let select = selector(r#"filter = { id = "concrete" }"#, Context::Item);
+        let (graph, _required) = parse_graph("oak_planks: oak_log -> 4 oak_planks");
+        let select = selector(r#"filter = { id = "oak_planks" }"#, Context::Item);
 
-        assert!(matches_item(&select, &graph, ItemIndex::new(0)));
-        assert!(!matches_item(&select, &graph, ItemIndex::new(1)));
+        assert!(matches_item(&select, &graph, item(&graph, "oak_planks")));
+        assert!(!matches_item(&select, &graph, item(&graph, "oak_log")));
     }
 
     #[test]
     fn regexes_are_unanchored_and_match_anywhere_in_the_id() {
-        let (graph, _required) = parse_graph("mix: coarse_dirt + dirt -> concrete");
+        let (graph, _required) =
+            parse_graph("coarse_dirt: 2 dirt + 2 gravel -> 4 coarse_dirt");
         let select = selector(r#"filter = { id = "/dirt/" }"#, Context::Item);
 
-        // Sorted item order: coarse_dirt=0, concrete=1.
         assert!(
-            matches_item(&select, &graph, ItemIndex::new(0)),
+            matches_item(&select, &graph, item(&graph, "coarse_dirt")),
             "unanchored: /dirt/ matches anywhere in the id, not just the whole string"
         );
-        assert!(!matches_item(&select, &graph, ItemIndex::new(1))); // concrete
-        assert!(matches_item(&select, &graph, ItemIndex::new(2))); // dirt
+        assert!(matches_item(&select, &graph, item(&graph, "dirt")));
+        assert!(!matches_item(&select, &graph, item(&graph, "gravel")));
     }
 
     #[test]
     fn slash_wrapped_id_is_a_regex() {
-        let (graph, _required) = parse_graph("mix: gtceu:dust_tiny -> gtceu:dust_small");
-        let select = selector(r#"filter = { id = "/^gtceu:dust_/" }"#, Context::Item);
+        let (graph, _required) =
+            parse_graph("iron_ingot_from_smelting_raw_iron: raw_iron -> iron_ingot");
+        let select = selector(r#"filter = { id = "/^raw_/" }"#, Context::Item);
 
-        // Sorted item order: gtceu:dust_small=0, gtceu:dust_tiny=1.
-        assert!(matches_item(&select, &graph, ItemIndex::new(0)));
-        assert!(matches_item(&select, &graph, ItemIndex::new(1)));
+        assert!(matches_item(&select, &graph, item(&graph, "raw_iron")));
+        assert!(!matches_item(&select, &graph, item(&graph, "iron_ingot")));
     }
 
     #[test]
     fn mod_matches_the_namespace_only() {
-        let (graph, _required) = parse_graph("mix: minecraft:dirt -> gtceu:dust");
+        let (graph, _required) = parse_graph(
+            "gtceu:macerator/macerate_cobblestone: minecraft:cobblestone -> gtceu:stone_dust",
+        );
         let select = selector(r#"filter = { mod = "gtceu" }"#, Context::Item);
 
-        // Sorted item order: gtceu:dust=0, minecraft:dirt=1.
-        assert!(matches_item(&select, &graph, ItemIndex::new(0)));
-        assert!(!matches_item(&select, &graph, ItemIndex::new(1)));
+        assert!(matches_item(
+            &select,
+            &graph,
+            item(&graph, "gtceu:stone_dust")
+        ));
+        assert!(!matches_item(
+            &select,
+            &graph,
+            item(&graph, "minecraft:cobblestone")
+        ));
     }
 
     #[test]
     fn object_is_and_array_is_or() {
-        let (graph, _required) =
-            parse_graph("mix: minecraft:dirt + minecraft:sand -> gtceu:dust");
+        let (graph, _required) = parse_graph(
+            "
+            gtceu:macerator/macerate_cobblestone: minecraft:cobblestone -> gtceu:stone_dust
+            gtceu:macerator/macerate_iron_ingot:  minecraft:iron_ingot -> gtceu:iron_dust
+            ",
+        );
         let and_select = selector(
-            r#"filter = { mod = "minecraft", id = "/dirt/" }"#,
+            r#"filter = { mod = "minecraft", id = "/iron/" }"#,
             Context::Item,
         );
         let or_select = selector(
-            r#"filter = [ { id = "minecraft:dirt" }, { id = "minecraft:sand" } ]"#,
+            r#"filter = [ { id = "minecraft:cobblestone" }, { id = "minecraft:iron_ingot" } ]"#,
             Context::Item,
         );
 
-        // Sorted item order: gtceu:dust=0, minecraft:dirt=1, minecraft:sand=2.
-        assert!(matches_item(&and_select, &graph, ItemIndex::new(1)));
-        assert!(!matches_item(&and_select, &graph, ItemIndex::new(2)));
-        assert!(matches_item(&or_select, &graph, ItemIndex::new(1)));
-        assert!(matches_item(&or_select, &graph, ItemIndex::new(2)));
+        assert!(matches_item(
+            &and_select,
+            &graph,
+            item(&graph, "minecraft:iron_ingot")
+        ));
+        assert!(
+            !matches_item(&and_select, &graph, item(&graph, "gtceu:iron_dust")),
+            "matches the id, but not the mod"
+        );
+        assert!(
+            !matches_item(&and_select, &graph, item(&graph, "minecraft:cobblestone")),
+            "matches the mod, but not the id"
+        );
+        assert!(matches_item(
+            &or_select,
+            &graph,
+            item(&graph, "minecraft:cobblestone")
+        ));
+        assert!(matches_item(
+            &or_select,
+            &graph,
+            item(&graph, "minecraft:iron_ingot")
+        ));
+        assert!(!matches_item(
+            &or_select,
+            &graph,
+            item(&graph, "gtceu:iron_dust")
+        ));
     }
 
     #[test]
     fn not_negates_the_inner_selector() {
-        let (graph, _required) = parse_graph("mix: minecraft:dirt -> minecraft:sand");
+        let (graph, _required) = parse_graph(
+            "
+            gtceu:macerator/macerate_cobblestone: minecraft:cobblestone -> gtceu:stone_dust
+            gtceu:macerator/macerate_iron_ingot:  minecraft:iron_ingot -> gtceu:iron_dust
+            ",
+        );
         let select = selector(r#"filter = { not = { mod = "minecraft" } }"#, Context::Item);
 
-        assert!(!matches_item(&select, &graph, ItemIndex::new(0)));
-        assert!(!matches_item(&select, &graph, ItemIndex::new(1)));
+        assert!(!matches_item(
+            &select,
+            &graph,
+            item(&graph, "minecraft:cobblestone")
+        ));
+        assert!(!matches_item(
+            &select,
+            &graph,
+            item(&graph, "minecraft:iron_ingot")
+        ));
+        assert!(matches_item(
+            &select,
+            &graph,
+            item(&graph, "gtceu:stone_dust")
+        ));
+        assert!(matches_item(
+            &select,
+            &graph,
+            item(&graph, "gtceu:iron_dust")
+        ));
     }
+
+    /// The real `gtceu:extruder/extrude_iron_to_rod` takes an iron ingot and a mold (catalyst,
+    /// chance 0) and makes 2 iron rods.
+    fn extruder_graph() -> Graph {
+        // Items sorted by id: gtceu:iron_rod=0, gtceu:rod_extruder_mold=1, iron_ingot=2.
+        Graph::new(
+            1,
+            vec![
+                Item::new("gtceu:iron_rod".to_owned(), ItemKind::Item, BTreeSet::new()),
+                Item::new(
+                    "gtceu:rod_extruder_mold".to_owned(),
+                    ItemKind::Item,
+                    BTreeSet::new(),
+                ),
+                Item::new("iron_ingot".to_owned(), ItemKind::Item, BTreeSet::from([0])),
+            ],
+            vec![Recipe::new(
+                "gtceu:extruder/extrude_iron_to_rod".to_owned(),
+                0,
+                vec![
+                    Slot::new(BTreeSet::from([ItemIndex::new(2)]), Some(0), 1, 1.0),
+                    Slot::new(BTreeSet::from([ItemIndex::new(1)]), None, 1, 0.0),
+                ],
+                vec![Output::new(ItemIndex::new(0), 2, 1.0)],
+                None,
+                None,
+            )],
+            vec!["forge:ingots/iron".to_owned()],
+            vec!["gtceu:extruder".to_owned()],
+        )
+    }
+
+    const EXTRUDE: &str = "gtceu:extruder/extrude_iron_to_rod";
 
     #[test]
     fn tag_matches_items_carrying_that_tag() {
-        let graph = Graph::new(
-            1,
-            vec![
-                Item::new(
-                    "gtceu:iron_ingot".to_owned(),
-                    ItemKind::Item,
-                    BTreeSet::from([0]),
-                ),
-                Item::new("gtceu:dirt".to_owned(), ItemKind::Item, BTreeSet::new()),
-            ],
-            Vec::new(),
-            vec!["forge:ingots".to_owned()],
-            Vec::new(),
-        );
-        let select = selector(r#"filter = { tag = "forge:ingots" }"#, Context::Item);
+        let graph = extruder_graph();
+        let select = selector(r#"filter = { tag = "forge:ingots/iron" }"#, Context::Item);
 
-        assert!(matches_item(&select, &graph, ItemIndex::new(0)));
-        assert!(!matches_item(&select, &graph, ItemIndex::new(1)));
+        assert!(matches_item(&select, &graph, item(&graph, "iron_ingot")));
+        assert!(!matches_item(
+            &select,
+            &graph,
+            item(&graph, "gtceu:rod_extruder_mold")
+        ));
     }
 
     #[test]
@@ -607,12 +690,8 @@ mod tests {
         let graph = Graph::new(
             1,
             vec![
-                Item::new(
-                    "minecraft:water".to_owned(),
-                    ItemKind::Fluid,
-                    BTreeSet::new(),
-                ),
-                Item::new("minecraft:dirt".to_owned(), ItemKind::Item, BTreeSet::new()),
+                Item::new("dirt".to_owned(), ItemKind::Item, BTreeSet::new()),
+                Item::new("water".to_owned(), ItemKind::Fluid, BTreeSet::new()),
             ],
             Vec::new(),
             Vec::new(),
@@ -620,131 +699,108 @@ mod tests {
         );
         let select = selector(r#"filter = { type = "fluid" }"#, Context::Item);
 
-        assert!(matches_item(&select, &graph, ItemIndex::new(0)));
-        assert!(!matches_item(&select, &graph, ItemIndex::new(1)));
+        assert!(matches_item(&select, &graph, item(&graph, "water")));
+        assert!(!matches_item(&select, &graph, item(&graph, "dirt")));
     }
 
     #[test]
     fn type_matches_recipe_type_for_recipes() {
-        let graph = Graph::new(
-            1,
-            vec![Item::new(
-                "minecraft:iron_ingot".to_owned(),
-                ItemKind::Item,
-                BTreeSet::new(),
-            )],
-            vec![Recipe::new(
-                "r".to_owned(),
-                0,
-                Vec::new(),
-                vec![Output::new(ItemIndex::new(0), 1, 1.0)],
-                None,
-                None,
-            )],
-            Vec::new(),
-            vec!["gtceu:extruder".to_owned()],
-        );
+        let graph = extruder_graph();
         let select = selector(r#"filter = { type = "gtceu:extruder" }"#, Context::Recipe);
+        let other = selector(r#"filter = { type = "smelting" }"#, Context::Recipe);
 
-        assert!(matches_recipe(&select, &graph, RecipeIndex::new(0)));
+        assert!(matches_recipe(&select, &graph, recipe(&graph, EXTRUDE)));
+        assert!(!matches_recipe(&other, &graph, recipe(&graph, EXTRUDE)));
     }
 
     #[test]
     fn has_input_matches_recipes_with_a_matching_slot_member() {
-        let (graph, _required) = parse_graph("mix: stone_dust + water -> concrete");
+        let (graph, _required) =
+            parse_graph("iron_pickaxe: 3 iron_ingot + 2 stick -> iron_pickaxe");
         let select = selector(
-            r#"filter = { has_input = { id = "stone_dust" } }"#,
+            r#"filter = { has_input = { id = "stick" } }"#,
+            Context::Recipe,
+        );
+        let output = selector(
+            r#"filter = { has_input = { id = "iron_pickaxe" } }"#,
             Context::Recipe,
         );
 
-        assert!(matches_recipe(&select, &graph, RecipeIndex::new(0)));
+        assert!(matches_recipe(
+            &select,
+            &graph,
+            recipe(&graph, "iron_pickaxe")
+        ));
+        assert!(
+            !matches_recipe(&output, &graph, recipe(&graph, "iron_pickaxe")),
+            "the pickaxe is an output, not an input"
+        );
     }
 
     #[test]
     fn has_output_matches_recipes_with_a_matching_output() {
-        let (graph, _required) = parse_graph("mix: stone_dust + water -> concrete");
+        let (graph, _required) =
+            parse_graph("iron_pickaxe: 3 iron_ingot + 2 stick -> iron_pickaxe");
         let select = selector(
-            r#"filter = { has_output = { id = "concrete" } }"#,
+            r#"filter = { has_output = { id = "iron_pickaxe" } }"#,
             Context::Recipe,
         );
 
-        assert!(matches_recipe(&select, &graph, RecipeIndex::new(0)));
-    }
-
-    /// A recipe with a chance-0 ("gtceu:mold", a catalyst) and a chance-1 ("gtceu:ingot")
-    /// input.
-    fn catalyst_fixture_graph() -> Graph {
-        Graph::new(
-            1,
-            vec![
-                Item::new("gtceu:mold".to_owned(), ItemKind::Item, BTreeSet::new()),
-                Item::new("gtceu:wire".to_owned(), ItemKind::Item, BTreeSet::new()),
-                Item::new("gtceu:ingot".to_owned(), ItemKind::Item, BTreeSet::new()),
-            ],
-            vec![Recipe::new(
-                "extrude".to_owned(),
-                0,
-                vec![
-                    Slot::new(BTreeSet::from([ItemIndex::new(0)]), None, 1, 0.0),
-                    Slot::new(BTreeSet::from([ItemIndex::new(2)]), None, 1, 1.0),
-                ],
-                vec![Output::new(ItemIndex::new(1), 1, 1.0)],
-                None,
-                None,
-            )],
-            Vec::new(),
-            vec!["gtceu:extruder".to_owned()],
-        )
+        assert!(matches_recipe(
+            &select,
+            &graph,
+            recipe(&graph, "iron_pickaxe")
+        ));
     }
 
     #[test]
     fn is_catalyst_true_matches_only_the_chance_zero_input_member() {
-        let graph = catalyst_fixture_graph();
+        let graph = extruder_graph();
         let select = selector(
-            r#"filter = { has_input = { id = "gtceu:mold", is_catalyst = true } }"#,
+            r#"filter = { has_input = { id = "gtceu:rod_extruder_mold", is_catalyst = true } }"#,
             Context::Recipe,
         );
         let wrong_item = selector(
-            r#"filter = { has_input = { id = "gtceu:ingot", is_catalyst = true } }"#,
+            r#"filter = { has_input = { id = "iron_ingot", is_catalyst = true } }"#,
             Context::Recipe,
         );
 
-        assert!(matches_recipe(&select, &graph, RecipeIndex::new(0)));
+        assert!(matches_recipe(&select, &graph, recipe(&graph, EXTRUDE)));
         assert!(
-            !matches_recipe(&wrong_item, &graph, RecipeIndex::new(0)),
-            "gtceu:ingot's slot has chance 1.0, not 0.0"
+            !matches_recipe(&wrong_item, &graph, recipe(&graph, EXTRUDE)),
+            "iron_ingot's slot has chance 1.0, not 0.0"
         );
     }
 
     #[test]
     fn is_catalyst_false_matches_only_the_chance_one_input_member() {
-        let graph = catalyst_fixture_graph();
+        let graph = extruder_graph();
         let select = selector(
-            r#"filter = { has_input = { id = "gtceu:ingot", is_catalyst = false } }"#,
+            r#"filter = { has_input = { id = "iron_ingot", is_catalyst = false } }"#,
             Context::Recipe,
         );
         let wrong_item = selector(
-            r#"filter = { has_input = { id = "gtceu:mold", is_catalyst = false } }"#,
+            r#"filter = { has_input = { id = "gtceu:rod_extruder_mold", is_catalyst = false } }"#,
             Context::Recipe,
         );
 
-        assert!(matches_recipe(&select, &graph, RecipeIndex::new(0)));
+        assert!(matches_recipe(&select, &graph, recipe(&graph, EXTRUDE)));
         assert!(
-            !matches_recipe(&wrong_item, &graph, RecipeIndex::new(0)),
-            "gtceu:mold's slot has chance 0.0, which is_catalyst = false excludes"
+            !matches_recipe(&wrong_item, &graph, recipe(&graph, EXTRUDE)),
+            "the mold's slot has chance 0.0, which is_catalyst = false excludes"
         );
     }
 
     #[test]
     fn is_catalyst_matches_has_output_s_chance_too() {
-        let graph = catalyst_fixture_graph();
+        let graph = extruder_graph();
         let select = selector(
-            r#"filter = { has_output = { id = "gtceu:wire", is_catalyst = false } }"#,
+            r#"filter = { has_output = { id = "gtceu:iron_rod", is_catalyst = false } }"#,
             Context::Recipe,
         );
 
         assert!(
-            matches_recipe(&select, &graph, RecipeIndex::new(0)),
+            matches_recipe(&select, &graph, recipe(&graph, EXTRUDE)),
             "is_catalyst reads the output's own chance, not just an input slot's"
         );
     }
@@ -770,33 +826,13 @@ mod tests {
 
     #[test]
     fn has_input_still_allows_tag_on_its_nested_selector() {
-        let graph = Graph::new(
-            1,
-            vec![
-                Item::new(
-                    "gtceu:iron_ingot".to_owned(),
-                    ItemKind::Item,
-                    BTreeSet::from([0]),
-                ),
-                Item::new("gtceu:dirt".to_owned(), ItemKind::Item, BTreeSet::new()),
-            ],
-            vec![Recipe::new(
-                "r".to_owned(),
-                0,
-                vec![Slot::new(BTreeSet::from([ItemIndex::new(0)]), None, 1, 1.0)],
-                Vec::new(),
-                None,
-                None,
-            )],
-            vec!["forge:ingots".to_owned()],
-            Vec::new(),
-        );
+        let graph = extruder_graph();
         let select = selector(
-            r#"filter = { has_input = { tag = "forge:ingots" } }"#,
+            r#"filter = { has_input = { tag = "forge:ingots/iron" } }"#,
             Context::Recipe,
         );
 
-        assert!(matches_recipe(&select, &graph, RecipeIndex::new(0)));
+        assert!(matches_recipe(&select, &graph, recipe(&graph, EXTRUDE)));
     }
 
     #[test]

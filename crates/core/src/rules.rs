@@ -652,8 +652,7 @@ mod tests {
     use super::selector::{Context, SelectorError};
     use super::{RuleError, RuleSet};
     use crate::analysis::edges::{Cause, EdgeState, EdgeStates, NodeAttrs, RuleKind};
-    use crate::graph_dsl::parse;
-    use crate::model::{ItemIndex, RecipeIndex};
+    use crate::graph_dsl::{item, parse, recipe};
 
     /// Get the toml source of all the docstring examples of this crate.
     fn module_doc_toml_examples() -> Vec<String> {
@@ -678,12 +677,12 @@ mod tests {
 
     #[test]
     fn required_action_marks_matching_items() {
-        let (graph, _required) = parse("mix: stone_dust -> gtceu:battery");
+        let (graph, _required) = parse("iron_pickaxe: 3 iron_ingot + 2 stick -> iron_pickaxe");
         let rules = RuleSet::parse(
             r#"
             [[item-rule]]
-            reason = "batteries are useful"
-            filter = { id = "/battery$/" }
+            reason = "pickaxes are useful"
+            filter = { id = "/_pickaxe$/" }
             action = { required = true }
             "#,
         )
@@ -693,11 +692,10 @@ mod tests {
 
         rules.apply(&graph, &mut attrs, &mut edges, 0);
 
-        // Sorted item order: gtceu:battery=0, stone_dust=1.
-        assert!(attrs.is_required(ItemIndex::new(0)));
-        assert!(!attrs.is_required(ItemIndex::new(1)));
+        assert!(attrs.is_required(item(&graph, "iron_pickaxe")));
+        assert!(!attrs.is_required(item(&graph, "iron_ingot")));
         assert!(matches!(
-            attrs.required_cause(ItemIndex::new(0)),
+            attrs.required_cause(item(&graph, "iron_pickaxe")),
             Some(Cause::Rule {
                 file: 0,
                 kind: RuleKind::Item,
@@ -708,28 +706,30 @@ mod tests {
 
     #[test]
     fn required_false_unmarks_a_preset_required_item() {
-        let (graph, _required) = parse("mix: stone_dust -> concrete");
+        let (graph, _required) = parse("oak_planks: oak_log -> 4 oak_planks");
         let rules = RuleSet::parse(
             r#"
             [[item-rule]]
             reason = "don't want this one after all"
-            filter = { id = "concrete" }
+            filter = { id = "oak_planks" }
             action = { required = false }
             "#,
         )
         .expect("valid rules");
+        let oak_planks = item(&graph, "oak_planks");
         let mut attrs = NodeAttrs::defaults(&graph);
-        attrs.set_required(ItemIndex::new(0), Cause::Pseudo);
+        attrs.set_required(oak_planks, Cause::Pseudo);
         let mut edges = EdgeStates::defaults(&graph);
 
         rules.apply(&graph, &mut attrs, &mut edges, 0);
 
-        assert!(!attrs.is_required(ItemIndex::new(0)));
+        assert!(!attrs.is_required(oak_planks));
     }
 
     #[test]
     fn world_source_action_marks_matching_items() {
-        let (graph, _required) = parse("mix: minecraft:iron_ore -> minecraft:iron_ingot");
+        let (graph, _required) =
+            parse("iron_ingot_from_smelting_iron_ore: iron_ore -> iron_ingot");
         let rules = RuleSet::parse(
             r#"
             [[item-rule]]
@@ -744,14 +744,14 @@ mod tests {
 
         rules.apply(&graph, &mut attrs, &mut edges, 0);
 
-        // Sorted item order: minecraft:iron_ingot=0, minecraft:iron_ore=1.
-        assert!(attrs.is_world_source(ItemIndex::new(1)));
-        assert!(!attrs.is_world_source(ItemIndex::new(0)));
+        assert!(attrs.is_world_source(item(&graph, "iron_ore")));
+        assert!(!attrs.is_world_source(item(&graph, "iron_ingot")));
     }
 
     #[test]
     fn two_item_actions_in_one_table_both_apply() {
-        let (graph, _required) = parse("mix: minecraft:iron_ore -> minecraft:iron_ingot");
+        let (graph, _required) =
+            parse("iron_ingot_from_smelting_iron_ore: iron_ore -> iron_ingot");
         let rules = RuleSet::parse(
             r#"
             [[item-rule]]
@@ -766,19 +766,18 @@ mod tests {
 
         rules.apply(&graph, &mut attrs, &mut edges, 0);
 
-        // Sorted item order: minecraft:iron_ingot=0, minecraft:iron_ore=1.
-        assert!(attrs.is_required(ItemIndex::new(1)));
-        assert!(attrs.is_world_source(ItemIndex::new(1)));
+        assert!(attrs.is_required(item(&graph, "iron_ore")));
+        assert!(attrs.is_world_source(item(&graph, "iron_ore")));
     }
 
     #[test]
     fn an_empty_action_table_does_nothing_but_warns() {
-        let (graph, _required) = parse("mix: stone_dust -> concrete");
+        let (graph, _required) = parse("oak_planks: oak_log -> 4 oak_planks");
         let rules = RuleSet::parse(
             r#"
             [[item-rule]]
             reason = "oops, forgot to fill this in"
-            filter = { id = "concrete" }
+            filter = { id = "oak_planks" }
             action = {}
             "#,
         )
@@ -788,23 +787,32 @@ mod tests {
 
         rules.apply(&graph, &mut attrs, &mut edges, 0);
 
-        assert!(!attrs.is_required(ItemIndex::new(0)), "nothing was set");
+        assert!(
+            !attrs.is_required(item(&graph, "oak_planks")),
+            "nothing was set"
+        );
         assert_eq!(rules.warnings().len(), 1);
-        assert!(rules
-            .warnings()
-            .first()
-            .expect("exactly one warning")
-            .contains("item-rule[0]"));
+        assert!(
+            rules
+                .warnings()
+                .first()
+                .expect("exactly one warning")
+                .contains("item-rule[0]")
+        );
     }
 
     #[test]
     fn propagate_action_sets_every_output_edge() {
-        let (graph, _required) = parse("macerate: ore -> 2 dust + 1 dust");
+        let (graph, _required) = parse(
+            "
+            gtceu:arc_furnace/arc_max_electric_pump: monilabs:max_electric_pump -> 64 gtceu:monium_ingot + 12 gtceu:meta_null_ingot + 4 gtceu:monium_ingot + 2 gtceu:terbium_ingot
+            ",
+        );
         let rules = RuleSet::parse(
             r#"
             [[recipe-rule]]
             reason = "recycling, drop it"
-            filter = { id = "macerate" }
+            filter = { id = "gtceu:arc_furnace/arc_max_electric_pump" }
             action = { propagate = "drop" }
             "#,
         )
@@ -814,19 +822,23 @@ mod tests {
 
         rules.apply(&graph, &mut attrs, &mut edges, 0);
 
-        assert_eq!(edges.state(RecipeIndex::new(0), 0), EdgeState::Dropped);
-        assert_eq!(edges.state(RecipeIndex::new(0), 1), EdgeState::Dropped);
+        let recycling = recipe(&graph, "gtceu:arc_furnace/arc_max_electric_pump");
+        assert_eq!(edges.states(recycling), &[EdgeState::Dropped; 4]);
     }
 
     #[test]
     fn apply_to_output_scopes_propagate_to_matching_outputs() {
-        let (graph, _required) = parse("macerate: ore -> cobblestone + dust");
+        let (graph, _required) = parse(
+            "
+            gtceu:macerator/macerate_iron_ore_to_crushed_ore: iron_ore -> 2 gtceu:crushed_iron_ore + gtceu:nickel_dust + gtceu:stone_dust
+            ",
+        );
         let rules = RuleSet::parse(
             r#"
             [[recipe-rule]]
-            reason = "cobblestone from the macerator is junk, but keep the ore dust"
-            filter = { id = "macerate" }
-            apply_to_output = { id = "cobblestone" }
+            reason = "stone dust from the macerator is junk, but keep the crushed ore"
+            filter = { id = "gtceu:macerator/macerate_iron_ore_to_crushed_ore" }
+            apply_to_output = { id = "gtceu:stone_dust" }
             action = { propagate = "drop" }
             "#,
         )
@@ -836,16 +848,18 @@ mod tests {
 
         rules.apply(&graph, &mut attrs, &mut edges, 0);
 
-        // Outputs keep the order they were written in: cobblestone=0, dust=1.
+        // Outputs keep the order they were written in.
         assert_eq!(
-            edges.state(RecipeIndex::new(0), 0),
-            EdgeState::Dropped,
-            "cobblestone matched apply_to_output"
-        );
-        assert_eq!(
-            edges.state(RecipeIndex::new(0), 1),
-            EdgeState::Propagate,
-            "dust didn't match apply_to_output, so it's untouched"
+            edges.states(recipe(
+                &graph,
+                "gtceu:macerator/macerate_iron_ore_to_crushed_ore"
+            )),
+            &[
+                EdgeState::Propagate,
+                EdgeState::Propagate,
+                EdgeState::Dropped,
+            ],
+            "only gtceu:stone_dust matched apply_to_output"
         );
     }
 
@@ -871,17 +885,17 @@ mod tests {
 
     #[test]
     fn later_rules_win_over_earlier_ones_for_the_same_item() {
-        let (graph, _required) = parse("mix: stone_dust -> concrete");
+        let (graph, _required) = parse("oak_planks: oak_log -> 4 oak_planks");
         let rules = RuleSet::parse(
             r#"
             [[item-rule]]
-            reason = "preset: every dust is required"
-            filter = { id = "/dust/" }
+            reason = "preset: all planks are required"
+            filter = { id = "/_planks$/" }
             action = { required = true }
 
             [[item-rule]]
             reason = "local: actually, not this one"
-            filter = { id = "stone_dust" }
+            filter = { id = "oak_planks" }
             action = { required = false }
             "#,
         )
@@ -891,8 +905,10 @@ mod tests {
 
         rules.apply(&graph, &mut attrs, &mut edges, 0);
 
-        // Sorted item order: concrete=0, stone_dust=1.
-        assert!(!attrs.is_required(ItemIndex::new(1)), "the later rule wins");
+        assert!(
+            !attrs.is_required(item(&graph, "oak_planks")),
+            "the later rule wins"
+        );
     }
 
     #[test]
@@ -958,7 +974,7 @@ mod tests {
 
     #[test]
     fn both_rule_arrays_are_optional() {
-        let (graph, _required) = parse("mix: stone_dust -> concrete");
+        let (graph, _required) = parse("oak_planks: oak_log -> 4 oak_planks");
         let rules = RuleSet::parse("").expect("a rules file with neither array is valid");
         let mut attrs = NodeAttrs::defaults(&graph);
         let mut edges = EdgeStates::defaults(&graph);
@@ -966,7 +982,7 @@ mod tests {
         rules.apply(&graph, &mut attrs, &mut edges, 0);
 
         assert!(
-            !attrs.is_required(ItemIndex::new(0)),
+            !attrs.is_required(item(&graph, "oak_planks")),
             "nothing marked it required"
         );
     }

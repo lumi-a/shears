@@ -1,17 +1,23 @@
 //! A tiny textual DSL for hand-written test graphs. Test-only.
 //!
-//! ```text required concrete mix:    stone_dust + water -> concrete pack:   4
-//! small_stone_dust -> stone_dust unpack: stone_dust -> 4 small_stone_dust ```
+//! ```text
+//! required iron_pickaxe
+//! iron_pickaxe:            3 iron_ingot + 2 stick -> iron_pickaxe
+//! iron_ingot_from_nuggets: 9 iron_nugget -> iron_ingot
+//! iron_nugget:             iron_ingot -> 9 iron_nugget
+//! ```
 //!
 //! One `required` line lists required items, space-separated. Every other non-blank line is a
-//! recipe: A name, `:`, `+`-separated inputs, `->`, then `+`-separated outputs.
+//! recipe: A name, `: ` (a colon and a space, so names can be namespaced ids like
+//! `gtceu:macerator/macerate_cobblestone`), `+`-separated inputs, `->`, then `+`-separated
+//! outputs.
 //!
 //! Each input or output is `[count] item`, the count defaulting to 1. Lines are trimmed before
 //! parsing.
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::model::{Graph, Item, ItemIndex, ItemKind, Output, Recipe, Slot};
+use crate::model::{Graph, Item, ItemIndex, ItemKind, Output, Recipe, RecipeIndex, Slot};
 
 /// One `[count] item` term, before its item name is resolved to an index.
 struct RawTerm {
@@ -80,7 +86,7 @@ fn parse_terms(side: &str) -> Vec<RawTerm> {
 ///
 /// # Panics
 ///
-/// If a recipe line has no `:` or no `->`.
+/// If a recipe line has no `: ` or no `->`.
 #[expect(clippy::panic, reason = "This is only used in tests, not user-facing.")]
 fn parse_line(line: &str) -> RawLine {
     if let Some(rest) = line.strip_prefix("required") {
@@ -90,8 +96,8 @@ fn parse_line(line: &str) -> RawLine {
     }
 
     let (name, rest) = line
-        .split_once(':')
-        .unwrap_or_else(|| panic!("recipe line missing ':': {line:?}"));
+        .split_once(": ")
+        .unwrap_or_else(|| panic!("recipe line missing ': ': {line:?}"));
     let (inputs, outputs) = rest
         .split_once("->")
         .unwrap_or_else(|| panic!("recipe line missing '->': {line:?}"));
@@ -194,22 +200,54 @@ pub(crate) fn parse(source: &str) -> (Graph, BTreeSet<ItemIndex>) {
     )
 }
 
+/// The index of the item `id` in `graph`.
+///
+/// # Panics
+///
+/// If `graph` has no item `id`.
+#[expect(clippy::panic, reason = "This is only used in tests, not user-facing.")]
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "crate-visible on purpose: unit tests outside this module need to reach it"
+)]
+pub(crate) fn item(graph: &Graph, id: &str) -> ItemIndex {
+    graph
+        .item_indices()
+        .find(|&index| graph.item(index).id() == id)
+        .unwrap_or_else(|| panic!("no item {id:?} in this graph"))
+}
+
+/// The index of the recipe `id` in `graph`.
+///
+/// # Panics
+///
+/// If `graph` has no recipe `id`.
+#[expect(clippy::panic, reason = "This is only used in tests, not user-facing.")]
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "crate-visible on purpose: unit tests outside this module need to reach it"
+)]
+pub(crate) fn recipe(graph: &Graph, id: &str) -> RecipeIndex {
+    graph
+        .recipe_indices()
+        .find(|&index| graph.recipe(index).id() == id)
+        .unwrap_or_else(|| panic!("no recipe {id:?} in this graph"))
+}
+
 #[cfg(test)]
 mod tests {
-    use core::iter;
     use std::collections::BTreeSet;
 
-    use super::parse;
-    use crate::model::ItemIndex;
+    use super::{item, parse};
 
     #[test]
-    fn parses_the_stone_dust_example() {
+    fn parses_the_module_doc_example() {
         let (graph, required) = parse(
             "
-            required concrete
-            mix:    stone_dust + water -> concrete
-            pack:   4 small_stone_dust -> stone_dust
-            unpack: stone_dust -> 4 small_stone_dust
+            required iron_pickaxe
+            iron_pickaxe:            3 iron_ingot + 2 stick -> iron_pickaxe
+            iron_ingot_from_nuggets: 9 iron_nugget -> iron_ingot
+            iron_nugget:             iron_ingot -> 9 iron_nugget
             ",
         );
 
@@ -227,7 +265,7 @@ mod tests {
             .collect();
         assert_eq!(
             items,
-            vec!["concrete", "small_stone_dust", "stone_dust", "water"],
+            vec!["iron_ingot", "iron_nugget", "iron_pickaxe", "stick"],
             "items should be sorted by id",
         );
 
@@ -243,9 +281,12 @@ mod tests {
                     .expect("recipe id")
             })
             .collect();
-        assert_eq!(recipes, vec!["mix", "pack", "unpack"]);
+        assert_eq!(
+            recipes,
+            vec!["iron_ingot_from_nuggets", "iron_nugget", "iron_pickaxe"]
+        );
 
-        assert_eq!(required, iter::once(ItemIndex::new(0)).collect());
+        assert_eq!(required, BTreeSet::from([item(&graph, "iron_pickaxe")]));
     }
 
     #[test]
@@ -285,12 +326,18 @@ mod tests {
     #[test]
     #[should_panic(expected = "expected a count")]
     fn rejects_a_malformed_count() {
-        drop(parse("mix: stone dust -> concrete"));
+        drop(parse("iron_nugget: iron ingot -> 9 iron_nugget"));
+    }
+
+    #[test]
+    #[should_panic(expected = "missing ': '")]
+    fn rejects_a_namespaced_name_without_a_space_after_its_colon() {
+        drop(parse("minecraft:iron_nugget:iron_ingot -> 9 iron_nugget"));
     }
 
     #[test]
     #[should_panic(expected = "missing '->'")]
     fn rejects_a_recipe_without_an_arrow() {
-        drop(parse("mix: stone_dust + water"));
+        drop(parse("iron_nugget: iron_ingot"));
     }
 }
