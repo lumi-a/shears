@@ -9,6 +9,8 @@
   --border: light-dark(#d6d6db, #3a3a40);
   --accent: light-dark(#2f5fd0, #7aa2ff);
   --error: light-dark(#b42318, #ff8a80);
+  --item: light-dark(#1f6a85, #7cc4dd);
+  --recipe: light-dark(#8a4a0b, #e2a86a);
 
   /* TOML editor */
   --editor-active-line: light-dark(rgb(0 0 0 / 0.03), rgb(255 255 255 / 0.022));
@@ -628,8 +630,16 @@ button.link[aria-current="true"] {
   background: var(--bg-hover);
 }
 
+.link-text.item {
+  color: var(--item);
+}
+
+.link-text.recipe {
+  color: var(--recipe);
+}
+
 /* Not needed by the latest analysis, i.e. what would get hidden. */
 .dead {
-  color: var(--fg-muted);
+  opacity: 0.6;
   text-decoration: line-through;
 }

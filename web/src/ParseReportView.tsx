@@ -6,7 +6,7 @@ import {
   type JSX,
   type ParentProps,
 } from "solid-js";
-import type { Target } from "./Details";
+import { LinkText, type Target } from "./Details";
 import type { Diagnostic, ParseReport } from "./session";
 
 // How many entries a list renders before "and N more". A big export has tens
@@ -24,26 +24,26 @@ export function LazyDetails(props: ParentProps<{ summary: JSX.Element }>) {
   );
 }
 
-// With `open`, the entries are ids. Clicking one opens it.
+// With `links`, the entries are ids of that kind. Clicking one opens it.
 export function CappedList(props: {
   items: string[];
-  open?: (id: string) => void;
+  links?: { kind: Target["kind"]; open: (target: Target) => void };
 }) {
   const hidden = () => props.items.length - SHOWN_PER_LIST;
   return (
     <ul>
       <For each={props.items.slice(0, SHOWN_PER_LIST)}>
-        {(item) => (
+        {(id) => (
           <li>
-            <Show when={props.open} fallback={item}>
-              {(open) => (
+            <Show when={props.links} fallback={id}>
+              {(links) => (
                 <button
                   type="button"
                   class="link"
                   title="Open in the Explorer"
-                  onClick={() => open()(item)}
+                  onClick={() => links().open({ kind: links().kind, id })}
                 >
-                  {item}
+                  <LinkText link={{ kind: links().kind, id, live: null }} />
                 </button>
               )}
             </Show>
@@ -156,7 +156,7 @@ export function ParseReportView(props: {
       >
         <CappedList
           items={props.report.registered_but_unreferenced}
-          open={(id) => props.open({ kind: "item", id })}
+          links={{ kind: "item", open: props.open }}
         />
       </LazyDetails>
     </section>

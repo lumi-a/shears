@@ -20,6 +20,7 @@ export type {
   Diagnostic,
   ItemDetail,
   Link,
+  LinkKind,
   Links,
   RecipeDetail,
   WhyStep,

@@ -73,7 +73,7 @@ function DiffView(props: {
             >
               <CappedList
                 items={change.ids}
-                open={(id) => props.open({ kind: change.kind, id })}
+                links={{ kind: change.kind, open: props.open }}
               />
             </LazyDetails>
           )}

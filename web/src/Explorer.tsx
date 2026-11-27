@@ -128,14 +128,11 @@ export function Explorer(props: {
                       type="button"
                       class="link"
                       aria-current={
-                        target()?.id === link.id ? "true" : undefined
+                        target()?.kind === link.kind && target()?.id === link.id
+                          ? "true"
+                          : undefined
                       }
-                      onClick={() =>
-                        navigation.open({
-                          kind: mode() === "recipes" ? "recipe" : "item",
-                          id: link.id,
-                        })
-                      }
+                      onClick={() => navigation.open(link)}
                     >
                       <LinkText link={link} />
                     </button>

@@ -146,12 +146,23 @@ impl Diff {
     }
 }
 
+/// Whether a [`Link`] goes to an item or a recipe.
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum Kind {
+    /// An item, or a fluid.
+    Item,
+    /// A recipe.
+    Recipe,
+}
+
 /// A reference to an item or recipe.
 ///
 /// The page will use this to link to.
-/// TODO: Should we not specify whether this is an item or a recipe?
 #[derive(Debug, Serialize)]
 struct Link {
+    /// Whether this is an item or a recipe.
+    kind: Kind,
     /// The item's or recipe's id.
     id: String,
     /// Whether it's transitively required (in case of an item) or propagates (in case of a

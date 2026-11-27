@@ -10,7 +10,7 @@ use shears_core::model::{Graph, ItemIndex, ItemKind, RecipeIndex};
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-use crate::{Analyzed, Link, Links, Session, js_error};
+use crate::{Analyzed, Kind, Link, Links, Session, js_error};
 
 /// One step of why an item is transitively required.
 #[derive(Debug, Serialize)]
@@ -19,10 +19,10 @@ enum WhyStep {
     /// The item before this step is an input of `recipe`, which makes the transitively
     /// required `output`. The next step explains `output`.
     Via {
-        /// The recipe's id.
-        recipe: String,
-        /// The output's id.
-        output: String,
+        /// The recipe.
+        recipe: Link,
+        /// The output.
+        output: Link,
     },
     /// The item before this step is required directly, for this reason. Always the last step.
     Required(String),
@@ -129,6 +129,7 @@ impl Linker<'_> {
     /// A link to `item`.
     fn item(&self, item: ItemIndex) -> Link {
         Link {
+            kind: Kind::Item,
             id: self.graph.item(item).id().to_owned(),
             live: self
                 .analyzed
@@ -139,6 +140,7 @@ impl Linker<'_> {
     /// A link to `recipe`.
     fn recipe(&self, recipe: RecipeIndex) -> Link {
         Link {
+            kind: Kind::Recipe,
             id: self.graph.recipe(recipe).id().to_owned(),
             live: self
                 .analyzed
@@ -181,8 +183,8 @@ impl Linker<'_> {
                 }
                 Some(&Why::Via { recipe, output }) => {
                     steps.push(WhyStep::Via {
-                        recipe: self.graph.recipe(recipe).id().to_owned(),
-                        output: self.graph.item(output).id().to_owned(),
+                        recipe: self.recipe(recipe),
+                        output: self.item(output),
                     });
                     current = output;
                 }

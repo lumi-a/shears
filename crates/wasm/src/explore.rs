@@ -4,7 +4,7 @@ use shears_core::rules::selector::{self, Context, Selector};
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-use crate::{Link, Links, Session, js_error};
+use crate::{Kind, Link, Links, Session, js_error};
 
 /// What a TOML query is prefixed with to parse it as a document.
 const QUERY_PREFIX: &str = "filter = ";
@@ -81,9 +81,11 @@ impl Session {
             total: 0,
             shown: Vec::new(),
         };
+        let kind = if recipes { Kind::Recipe } else { Kind::Item };
         let mut record = |id: &str, is_live: Option<bool>| {
             if result.shown.len() < limit {
                 result.shown.push(Link {
+                    kind,
                     id: id.to_owned(),
                     live: is_live,
                 });

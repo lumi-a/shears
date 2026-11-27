@@ -2,10 +2,7 @@ import { For, Show, type JSX } from "solid-js";
 import type { ItemDetail, Link, Links, RecipeDetail } from "./session";
 
 // What the Explorer shows details of.
-export interface Target {
-  kind: "item" | "recipe";
-  id: string;
-}
+export type Target = Pick<Link, "kind" | "id">;
 
 // How the details reach back into the Explorer.
 export interface Navigation {
@@ -15,18 +12,20 @@ export interface Navigation {
   search: (query: string, recipes: boolean) => void;
 }
 
-// An item or recipe id. This is struck through if the latest analysis found it not needed.
+// An item or recipe id, also coloured by which of the two it is.
+// This is struck through if the latest analysis found it not needed.
 export function LinkText(props: { link: Link }) {
   return (
     <span
-      class="link-text"
+      class={`link-text ${props.link.kind}`}
       classList={{ dead: props.link.live === false }}
       title={
-        props.link.live === null
-          ? undefined
+        props.link.kind +
+        (props.link.live === null
+          ? ""
           : props.link.live
-            ? "needed"
-            : "not needed"
+            ? ", needed"
+            : ", not needed")
       }
     >
       {props.link.id}
@@ -51,18 +50,12 @@ function Liveness(props: { live: boolean | null; needed: string }) {
 }
 
 // A clickable id, opening that item's or recipe's details.
-function LinkButton(props: {
-  link: Link;
-  kind: Target["kind"];
-  navigation: Navigation;
-}) {
+function LinkButton(props: { link: Link; navigation: Navigation }) {
   return (
     <button
       type="button"
       class="link"
-      onClick={() =>
-        props.navigation.open({ kind: props.kind, id: props.link.id })
-      }
+      onClick={() => props.navigation.open(props.link)}
     >
       <LinkText link={props.link} />
     </button>
@@ -73,7 +66,6 @@ function LinkButton(props: {
 function LinkList(props: {
   title: string;
   links: Links;
-  kind: Target["kind"];
   navigation: Navigation;
 }) {
   const hidden = () => props.links.total - props.links.shown.length;
@@ -86,11 +78,7 @@ function LinkList(props: {
         <For each={props.links.shown}>
           {(link) => (
             <li>
-              <LinkButton
-                link={link}
-                kind={props.kind}
-                navigation={props.navigation}
-              />
+              <LinkButton link={link} navigation={props.navigation} />
             </li>
           )}
         </For>
@@ -101,9 +89,6 @@ function LinkList(props: {
     </>
   );
 }
-
-// A link that's only known by id, assumed neither needed nor not.
-const unknown = (id: string): Link => ({ id, live: null });
 
 export function ItemDetailView(props: {
   detail: ItemDetail;
@@ -133,14 +118,12 @@ export function ItemDetailView(props: {
                 <li>
                   input of{" "}
                   <LinkButton
-                    link={unknown(step.via.recipe)}
-                    kind="recipe"
+                    link={step.via.recipe}
                     navigation={props.navigation}
                   />
                   , which makes{" "}
                   <LinkButton
-                    link={unknown(step.via.output)}
-                    kind="item"
+                    link={step.via.output}
                     navigation={props.navigation}
                   />
                 </li>
@@ -177,13 +160,11 @@ export function ItemDetailView(props: {
       <LinkList
         title="Made by"
         links={props.detail.produced_by}
-        kind="recipe"
         navigation={props.navigation}
       />
       <LinkList
         title="Used in"
         links={props.detail.used_in}
-        kind="recipe"
         navigation={props.navigation}
       />
     </>
@@ -240,11 +221,7 @@ export function RecipeDetailView(props: {
                 <For each={slot.members.shown}>
                   {(member) => (
                     <li>
-                      <LinkButton
-                        link={member}
-                        kind="item"
-                        navigation={props.navigation}
-                      />
+                      <LinkButton link={member} navigation={props.navigation} />
                     </li>
                   )}
                 </For>
@@ -269,11 +246,7 @@ export function RecipeDetailView(props: {
           {(output) => (
             <li>
               {output.count.toLocaleString()}×{" "}
-              <LinkButton
-                link={output.item}
-                kind="item"
-                navigation={props.navigation}
-              />
+              <LinkButton link={output.item} navigation={props.navigation} />
               <Show when={output.chance < 1}>
                 <span class="hint"> ({percent(output.chance)} chance)</span>
               </Show>

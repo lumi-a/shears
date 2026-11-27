@@ -41,15 +41,19 @@ export interface Analysis {
   diff: AnalysisDiff | null;
 }
 
-// A reference to an item or recipe. live: whether it's transitively required
-// (an item) or propagates (a recipe), null before the first analysis.
+// Mirrors shears_wasm::Kind.
+export type LinkKind = "item" | "recipe";
+
+// Mirrors shears_wasm::Link, a reference to an item or recipe.
+// ive: whether it's transitively required (an item) or propagates (a recipe),
+// null before the first analysis.
 export interface Link {
+  kind: LinkKind;
   id: string;
   live: boolean | null;
 }
 
-// Mirrors shears_wasm's SearchResult and details::Links: the first few of a
-// list, and how long it is.
+// Mirrors shears_wasm::Links: the first few of a list, and how long it is.
 export interface Links {
   total: number;
   shown: Link[];
@@ -57,7 +61,7 @@ export interface Links {
 
 // Mirrors shears_wasm::details::WhyStep.
 export type WhyStep =
-  { via: { recipe: string; output: string } } | { required: string };
+  { via: { recipe: Link; output: Link } } | { required: string };
 
 // Mirrors shears_wasm::details::ItemDetail.
 export interface ItemDetail {
