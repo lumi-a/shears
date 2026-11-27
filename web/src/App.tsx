@@ -1,7 +1,7 @@
 import { createSignal, For, onMount, Show } from "solid-js";
 import { AnalysisView, type AnalysisResult } from "./AnalysisView";
 import type { Target } from "./Details";
-import { Explorer } from "./Explorer";
+import { Explorer, type ExplorerRequest } from "./Explorer";
 import { ParseReportView } from "./ParseReportView";
 import { RulesPane } from "./RulesPane";
 import {
@@ -149,17 +149,20 @@ function App() {
             recipeCount={current().recipeCount}
             open={openInExplorer}
           />
-          <ParseReportView report={current().report} open={openInExplorer} />
+          <ParseReportView
+            report={current().report}
+            open={openInExplorer}
+            search={searchInExplorer}
+          />
         </div>
       )}
     </Show>
   );
 
-  // What the Report pane asked the Explorer to open.
-  const [explorerRequest, setExplorerRequest] = createSignal<{
-    target: Target;
-  }>();
+  // What the Report pane asked the Explorer to open or search for.
+  const [explorerRequest, setExplorerRequest] = createSignal<ExplorerRequest>();
   const openInExplorer = (target: Target) => setExplorerRequest({ target });
+  const searchInExplorer = (query: string) => setExplorerRequest({ query });
 
   const explorerPane = (
     <Show

@@ -45,15 +45,49 @@ pub struct RawFile {
     pub bytes: Vec<u8>,
 }
 
+/// What a [`Diagnostic`] is about.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum About {
+    /// A file of the export, e.g. a recipe that didn't parse.
+    File {
+        /// Its path. See in [`RawFile::path`].
+        path: String,
+    },
+    /// A tag.
+    Tag {
+        /// Its id.
+        id: String,
+    },
+    /// An item or fluid.
+    Item {
+        /// Its id.
+        id: String,
+    },
+}
+
+impl About {
+    /// The file at `path`.
+    fn file(path: impl Into<String>) -> Self {
+        Self::File { path: path.into() }
+    }
+
+    /// The tag `id`.
+    fn tag(id: impl Into<String>) -> Self {
+        Self::Tag { id: id.into() }
+    }
+
+    /// The item or fluid `id`.
+    fn item(id: impl Into<String>) -> Self {
+        Self::Item { id: id.into() }
+    }
+}
+
 /// A problem noticed while ingesting.
 #[derive(Debug, Serialize)]
 pub struct Diagnostic {
-    /// A short label for whatever this concerns.
-    ///
-    /// Usually a file path, a recipe id, a tag id.
-    ///
-    /// This is not further typed, as it's meant to be read by the user.
-    pub about: String,
+    /// What this concerns.
+    pub about: About,
     /// What went wrong.
     pub message: String,
 }
@@ -71,9 +105,9 @@ pub struct ParseReport {
 
 impl ParseReport {
     /// Records one problem.
-    fn fail(&mut self, about: impl Into<String>, message: impl Into<String>) {
+    fn fail(&mut self, about: About, message: impl Into<String>) {
         self.diagnostics.push(Diagnostic {
-            about: about.into(),
+            about,
             message: message.into(),
         });
     }
@@ -372,11 +406,11 @@ fn read_registries_and_tags(
         match file.path.as_str() {
             "registries/item.json" => match parse_registry_keys(&file.bytes) {
                 Ok(keys) => item_keys = keys,
-                Err(message) => report.fail(&file.path, message),
+                Err(message) => report.fail(About::file(&file.path), message),
             },
             "registries/fluid.json" => match parse_registry_keys(&file.bytes) {
                 Ok(keys) => fluid_keys = keys,
-                Err(message) => report.fail(&file.path, message),
+                Err(message) => report.fail(About::file(&file.path), message),
             },
             path => {
                 if let Some(tag_id) = tag_id_from_path(path) {
@@ -384,7 +418,7 @@ fn read_registries_and_tags(
                         Ok(members) => {
                             let _: Option<Vec<String>> = raw_tags.insert(tag_id, members);
                         }
-                        Err(message) => report.fail(&file.path, message),
+                        Err(message) => report.fail(About::file(&file.path), message),
                     }
                 }
             }
@@ -502,7 +536,7 @@ fn build_items(
             let is_fluid = fluid_keys.contains(key);
             let kind = if is_item && is_fluid {
                 report.fail(
-                    key,
+                    About::item(key),
                     "registered as both an item and a fluid, only the item will be kept",
                 );
                 ItemKind::Item
@@ -513,7 +547,7 @@ fn build_items(
             } else {
                 if !key.contains('{') {
                     report.fail(
-                        key,
+                        About::item(key),
                         "referenced by a recipe, but not a registered item or fluid",
                     );
                 }
@@ -582,7 +616,7 @@ fn resolve_tag(
         return cached.clone();
     }
     if !visiting.insert(id.to_owned()) {
-        report.fail(id, "cyclic tag reference");
+        report.fail(About::tag(id), "cyclic tag reference");
         return BTreeSet::new();
     }
 
@@ -607,7 +641,7 @@ fn resolve_tag(
                 }
             }
         }
-        None => report.fail(id, "referenced tag has no tag file"),
+        None => report.fail(About::tag(id), "referenced tag has no tag file"),
     }
 
     let _: bool = visiting.remove(id);
@@ -652,7 +686,10 @@ fn resolve_all_tags(
                 if registered.contains(key.as_str()) {
                     Some(interner.borrow_mut().intern(&key))
                 } else {
-                    report.fail(tag_id, format!("tag member {key:?} is not a known item"));
+                    report.fail(
+                        About::tag(tag_id),
+                        format!("tag member {key:?} is not a known item"),
+                    );
                     None
                 }
             })
@@ -803,14 +840,17 @@ fn parse_recipes(
             continue;
         }
         let Some(id) = recipe_id_from_path(&file.path) else {
-            report.fail(&file.path, "can't derive a recipe id from this path");
+            report.fail(
+                About::file(&file.path),
+                "can't derive a recipe id from this path",
+            );
             continue;
         };
 
         let value: Value = match serde_json::from_slice(&file.bytes) {
             Ok(value) => value,
             Err(error) => {
-                report.fail(&file.path, format!("invalid JSON: {error}"));
+                report.fail(About::file(&file.path), format!("invalid JSON: {error}"));
                 continue;
             }
         };
@@ -819,7 +859,7 @@ fn parse_recipes(
             .and_then(Value::as_str)
             .map(ToOwned::to_owned)
         else {
-            report.fail(&file.path, "missing \"type\"");
+            report.fail(About::file(&file.path), "missing \"type\"");
             continue;
         };
         *report.recipe_type_counts.entry(rtype.clone()).or_insert(0) += 1;
@@ -845,7 +885,7 @@ fn parse_recipes(
         if let Some(adapter) = maybe_adapter {
             match adapter(id, &value, resolver) {
                 Ok(draft) => drafts.push((rtype, draft)),
-                Err(message) => report.fail(&file.path, message),
+                Err(message) => report.fail(About::file(&file.path), message),
             }
             continue;
         }
@@ -853,10 +893,10 @@ fn parse_recipes(
         match shapes.shape_for(&rtype) {
             Some(shape) => match shapes::apply(id, &value, shape, resolver) {
                 Ok(draft) => drafts.push((rtype, draft)),
-                Err(message) => report.fail(&file.path, message),
+                Err(message) => report.fail(About::file(&file.path), message),
             },
             None => report.fail(
-                &file.path,
+                About::file(&file.path),
                 format!("no adapter for recipe type {rtype:?} yet"),
             ),
         }
@@ -907,7 +947,7 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use super::{
-        DEFAULT_SHAPES_TOML, ItemInterner, ParseReport, PlainResolverParts, RawFile,
+        About, DEFAULT_SHAPES_TOML, ItemInterner, ParseReport, PlainResolverParts, RawFile,
         build_items, ingest, parse_tag_members, resolve_all_tags, resolve_output_id,
         tag_id_from_path, validate_chance, with_namespace,
     };
@@ -979,6 +1019,13 @@ mod tests {
             resolve_all_tags(&raw_tags, &registered, &interner, &mut report);
 
         assert_eq!(report.diagnostics.len(), 1);
+        let diagnostic = report.diagnostics.first().expect("one diagnostic");
+        assert_eq!(
+            diagnostic.about,
+            About::Tag {
+                id: "forge:dusts".to_owned()
+            }
+        );
         assert!(
             tag_members.first().expect("one tag").is_empty(),
             "the unresolved required member is dropped from the tag's members"
@@ -1025,10 +1072,12 @@ mod tests {
 
         assert_eq!(items.len(), 1, "the id collapses to one entry");
         assert_eq!(items.first().expect("one item").kind(), ItemKind::Item);
-        assert!(report
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.message.contains("both an item and a fluid")));
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains("both an item and a fluid"))
+        );
     }
 
     #[test]
@@ -1105,9 +1154,13 @@ mod tests {
 
         assert_eq!(items.len(), 1, "it still gets an entry, just a flagged one");
         assert!(report.diagnostics.iter().any(|diagnostic| {
-            diagnostic
-                .message
-                .contains("not a registered item or fluid")
+            diagnostic.about
+                == About::Item {
+                    id: "minecraft:made_up_item".to_owned(),
+                }
+                && diagnostic
+                    .message
+                    .contains("not a registered item or fluid")
         }));
     }
 

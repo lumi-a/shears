@@ -1,9 +1,15 @@
 // Messages between the page (session.ts) and the worker holding the Session
 // (session.worker.ts).
 
+// Mirrors shears_core::ingest::About: what a diagnostic is about.
+export type About =
+  | { kind: "file"; path: string }
+  | { kind: "tag"; id: string }
+  | { kind: "item"; id: string };
+
 // Mirrors shears_core::ingest::Diagnostic, as serialized by Session::report_json.
 export interface Diagnostic {
-  about: string;
+  about: About;
   message: string;
 }
 

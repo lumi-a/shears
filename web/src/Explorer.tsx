@@ -26,6 +26,9 @@ type Outcome<T> = { value: T } | { error: string };
 
 const KINDS: LinkKind[] = ["item", "recipe"];
 
+// What the rest of the page can ask the Explorer for.
+export type ExplorerRequest = { target: Target } | { query: string };
+
 const messageOf = (caught: unknown) =>
   caught instanceof Error ? caught.message : String(caught);
 
@@ -79,8 +82,9 @@ export function Explorer(props: {
   session: SessionClient;
   // Changes whenever the graph or the analysis did.
   revision: unknown;
-  // Something to open from outside, e.g. an id clicked in the Report pane.
-  request: { target: Target } | undefined;
+  // Something to open or search for from outside, e.g. an id clicked in the
+  // Report pane.
+  request: ExplorerRequest | undefined;
 }) {
   const [query, setQuery] = createSignal("");
   // Which kinds the results list. Both by default.
@@ -107,7 +111,12 @@ export function Explorer(props: {
   createEffect(() => {
     const request = props.request;
     // Only the request is what this reacts to, not the history open() reads.
-    if (request !== undefined) untrack(() => navigation.open(request.target));
+    if (request === undefined) return;
+    if ("target" in request) {
+      untrack(() => navigation.open(request.target));
+    } else {
+      setQuery(request.query);
+    }
   });
 
   const search = createLatest(() => {

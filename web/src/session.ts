@@ -15,6 +15,7 @@ import type {
 } from "./session-protocol";
 
 export type {
+  About,
   Analysis,
   AnalysisDiff,
   Diagnostic,

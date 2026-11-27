@@ -2,12 +2,14 @@ import {
   createMemo,
   createSignal,
   For,
+  Match,
   Show,
+  Switch,
   type JSX,
   type ParentProps,
 } from "solid-js";
 import { LinkText, ShowAll, type Target } from "./Details";
-import type { Diagnostic, ParseReport } from "./session";
+import type { About, Diagnostic, ParseReport } from "./session";
 
 // How many entries a list renders before "and N more". A big export has tens
 // of thousands of diagnostics, let's not bloat the poor DOM.
@@ -24,34 +26,18 @@ export function LazyDetails(props: ParentProps<{ summary: JSX.Element }>) {
   );
 }
 
-// With `links`, the entries are ids of that kind. Clicking one opens it.
-export function CappedList(props: {
-  items: string[];
-  links?: { kind: Target["kind"]; open: (target: Target) => void };
+// A list that renders its first entries, each with `children`, and a button
+// to render the rest.
+export function CappedList<T>(props: {
+  items: T[];
+  children: (item: T) => JSX.Element;
 }) {
   const [all, setAll] = createSignal(false);
   const shown = () =>
     all() ? props.items : props.items.slice(0, SHOWN_PER_LIST);
   return (
     <ul>
-      <For each={shown()}>
-        {(id) => (
-          <li>
-            <Show when={props.links} fallback={id}>
-              {(links) => (
-                <button
-                  type="button"
-                  class="link"
-                  title="Open in the Explorer"
-                  onClick={() => links().open({ kind: links().kind, id })}
-                >
-                  <LinkText link={{ kind: links().kind, id, live: null }} />
-                </button>
-              )}
-            </Show>
-          </li>
-        )}
-      </For>
+      <For each={shown()}>{(item) => <li>{props.children(item)}</li>}</For>
       <ShowAll
         hidden={props.items.length - shown().length}
         onClick={() => setAll(true)}
@@ -60,21 +46,73 @@ export function CappedList(props: {
   );
 }
 
+// An item or recipe id that opens in the Explorer.
+export function OpenButton(props: {
+  target: Target;
+  open: (target: Target) => void;
+}) {
+  return (
+    <button
+      type="button"
+      class="link"
+      title="Open in the Explorer"
+      onClick={() => props.open(props.target)}
+    >
+      <LinkText link={{ ...props.target, live: null }} />
+    </button>
+  );
+}
+
+// What a diagnostic is about. An item opens in the Explorer, a tag searches
+// for its items there, and a file is only shown.
+function AboutLink(props: {
+  about: About;
+  open: (target: Target) => void;
+  search: (query: string) => void;
+}) {
+  const of = <K extends About["kind"]>(kind: K) =>
+    props.about.kind === kind
+      ? (props.about as Extract<About, { kind: K }>)
+      : undefined;
+  return (
+    <Switch>
+      <Match when={of("item")}>
+        {(item) => <OpenButton target={item()} open={props.open} />}
+      </Match>
+      <Match when={of("tag")}>
+        {(tag) => (
+          <button
+            type="button"
+            class="link"
+            title="Search for items with this tag"
+            onClick={() => props.search(`{ tag = "${tag().id}" }`)}
+          >
+            #{tag().id}
+          </button>
+        )}
+      </Match>
+      <Match when={of("file")}>
+        {(file) => <span class="file">{file().path}</span>}
+      </Match>
+    </Switch>
+  );
+}
+
 interface DiagnosticGroup {
   message: string;
-  abouts: string[];
+  abouts: Diagnostic[];
 }
 
 // Most diagnostics repeat one of a few hundred messages ("no adapter for
 // recipe type X yet"). So we group by message and sort by group size.
 function groupByMessage(diagnostics: Diagnostic[]): DiagnosticGroup[] {
-  const groups = new Map<string, string[]>();
-  for (const { about, message } of diagnostics) {
-    const abouts = groups.get(message);
+  const groups = new Map<string, Diagnostic[]>();
+  for (const diagnostic of diagnostics) {
+    const abouts = groups.get(diagnostic.message);
     if (abouts === undefined) {
-      groups.set(message, [about]);
+      groups.set(diagnostic.message, [diagnostic]);
     } else {
-      abouts.push(about);
+      abouts.push(diagnostic);
     }
   }
   return [...groups]
@@ -89,6 +127,8 @@ export function ParseReportView(props: {
   report: ParseReport;
   // Opens an item in the Explorer.
   open: (target: Target) => void;
+  // Searches for `query` in the Explorer.
+  search: (query: string) => void;
 }) {
   const groups = createMemo(() => groupByMessage(props.report.diagnostics));
   const recipeTypes = createMemo(() =>
@@ -112,7 +152,15 @@ export function ParseReportView(props: {
               </>
             }
           >
-            <CappedList items={group.abouts} />
+            <CappedList items={group.abouts}>
+              {(diagnostic) => (
+                <AboutLink
+                  about={diagnostic.about}
+                  open={props.open}
+                  search={props.search}
+                />
+              )}
+            </CappedList>
           </LazyDetails>
         )}
       </For>
@@ -157,10 +205,11 @@ export function ParseReportView(props: {
           </>
         }
       >
-        <CappedList
-          items={props.report.registered_but_unreferenced}
-          links={{ kind: "item", open: props.open }}
-        />
+        <CappedList items={props.report.registered_but_unreferenced}>
+          {(id) => (
+            <OpenButton target={{ kind: "item", id }} open={props.open} />
+          )}
+        </CappedList>
       </LazyDetails>
     </section>
   );

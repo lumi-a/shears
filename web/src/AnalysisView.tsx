@@ -1,5 +1,5 @@
 import { For, Show } from "solid-js";
-import { CappedList, LazyDetails } from "./ParseReportView";
+import { CappedList, LazyDetails, OpenButton } from "./ParseReportView";
 import type { Target } from "./Details";
 import type { Analysis, AnalysisDiff } from "./session";
 
@@ -71,10 +71,14 @@ function DiffView(props: {
                 </>
               }
             >
-              <CappedList
-                items={change.ids}
-                links={{ kind: change.kind, open: props.open }}
-              />
+              <CappedList items={change.ids}>
+                {(id) => (
+                  <OpenButton
+                    target={{ kind: change.kind, id }}
+                    open={props.open}
+                  />
+                )}
+              </CappedList>
             </LazyDetails>
           )}
         </For>
