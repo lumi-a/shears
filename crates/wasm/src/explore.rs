@@ -4,7 +4,21 @@ use shears_core::rules::selector::{self, Context, Selector};
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
+use serde::Serialize;
+use shears_core::model::{ItemIndex, RecipeIndex};
+
 use crate::{Kind, Link, Links, Session, js_error};
+
+/// What a search found.
+#[derive(Debug, Serialize)]
+struct SearchResults {
+    /// How many items match. `None` if the query isn't an item selector.
+    item_count: Option<usize>,
+    /// How many recipes match. `None` if the query isn't a recipe selector.
+    recipe_count: Option<usize>,
+    /// The matches of the kinds asked for.
+    links: Links,
+}
 
 /// What a TOML query is prefixed with to parse it as a document.
 const QUERY_PREFIX: &str = "filter = ";
@@ -58,71 +72,84 @@ fn parse_query(query: &str, context: Context) -> Result<Option<Selector>, String
     reason = "the explorer's part of Session's JS API. Kept apart from lib.rs's core lifecycle"
 )]
 impl Session {
-    /// Finds the items (or with `recipes`, the recipes) matching `query`. Returns at most
-    /// `limit` of them as JSON.
-    ///
-    /// Mirrored by `Links` in `web/src/session-protocol.ts`.
+    /// Finds the items and recipes matching `query`, as JSON mirrored by `SearchResults` in
+    /// `web/src/session-protocol.ts`. Lists only the kinds asked for, at most `limit` of
+    /// them. Items first.
     ///
     /// A query is a selector as in a rule's `filter`, or plain text as one id or `/regex/`.
+    /// It's read as an item selector and as a recipe selector. A kind it's no valid selector
+    /// for (e.g. recipes, for `tag`) has no matches.
     ///
     /// # Errors
     ///
-    /// If `query` isn't a valid selector.
+    /// If `query` isn't a valid selector for either kind.
     pub fn search_json(
         &self,
         query: &str,
+        items: bool,
         recipes: bool,
         limit: usize,
     ) -> Result<String, JsValue> {
-        let context = if recipes {
-            Context::Recipe
-        } else {
-            Context::Item
-        };
-        let filter = parse_query(query, context).map_err(|error| js_error(&error))?;
+        let item_filter = parse_query(query, Context::Item);
+        let recipe_filter = parse_query(query, Context::Recipe);
+        if let (Err(item_error), Err(recipe_error)) = (&item_filter, &recipe_filter) {
+            let message = if item_error == recipe_error {
+                item_error.clone()
+            } else {
+                format!("as items: {item_error}. As recipes: {recipe_error}")
+            };
+            return Err(js_error(&message));
+        }
         let liveness = self.analyzed.as_ref().map(|analyzed| &analyzed.live);
         let graph = &self.graph;
 
-        let mut result = Links {
-            total: 0,
-            shown: Vec::new(),
+        let item_matches: Option<Vec<ItemIndex>> = item_filter.ok().map(|filter| {
+            graph
+                .item_indices()
+                .filter(|&item| {
+                    filter
+                        .as_ref()
+                        .is_none_or(|matching| selector::matches_item(matching, graph, item))
+                })
+                .collect()
+        });
+        let recipe_matches: Option<Vec<RecipeIndex>> = recipe_filter.ok().map(|filter| {
+            graph
+                .recipe_indices()
+                .filter(|&recipe| {
+                    filter.as_ref().is_none_or(|matching| {
+                        selector::matches_recipe(matching, graph, recipe)
+                    })
+                })
+                .collect()
+        });
+
+        let shown_items = item_matches
+            .as_deref()
+            .filter(|_| items)
+            .unwrap_or_default();
+        let shown_recipes = recipe_matches
+            .as_deref()
+            .filter(|_| recipes)
+            .unwrap_or_default();
+        let item_links = shown_items.iter().map(|&item| Link {
+            kind: Kind::Item,
+            id: graph.item(item).id().to_owned(),
+            live: liveness.map(|live| live.is_transitively_required(item)),
+        });
+        let recipe_links = shown_recipes.iter().map(|&recipe| Link {
+            kind: Kind::Recipe,
+            id: graph.recipe(recipe).id().to_owned(),
+            live: liveness.map(|live| live.is_recipe_transitively_required(recipe)),
+        });
+        let result = SearchResults {
+            item_count: item_matches.as_ref().map(Vec::len),
+            recipe_count: recipe_matches.as_ref().map(Vec::len),
+            links: Links {
+                total: shown_items.len() + shown_recipes.len(),
+                shown: item_links.chain(recipe_links).take(limit).collect(),
+            },
         };
-        let kind = if recipes { Kind::Recipe } else { Kind::Item };
-        let mut record = |id: &str, is_live: Option<bool>| {
-            if result.shown.len() < limit {
-                result.shown.push(Link {
-                    kind,
-                    id: id.to_owned(),
-                    live: is_live,
-                });
-            }
-            result.total += 1;
-        };
-        if recipes {
-            for recipe in graph.recipe_indices() {
-                if filter
-                    .as_ref()
-                    .is_none_or(|matching| selector::matches_recipe(matching, graph, recipe))
-                {
-                    record(
-                        graph.recipe(recipe).id(),
-                        liveness.map(|live| live.is_recipe_transitively_required(recipe)),
-                    );
-                }
-            }
-        } else {
-            for item in graph.item_indices() {
-                if filter
-                    .as_ref()
-                    .is_none_or(|matching| selector::matches_item(matching, graph, item))
-                {
-                    record(
-                        graph.item(item).id(),
-                        liveness.map(|live| live.is_transitively_required(item)),
-                    );
-                }
-            }
-        }
         serde_json::to_string(&result).map_err(|error| js_error(&error))
     }
 }

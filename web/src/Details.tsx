@@ -8,8 +8,8 @@ export type Target = Pick<Link, "kind" | "id">;
 export interface Navigation {
   // Shows `target`'s details.
   open: (target: Target) => void;
-  // Searches for `query` among items or recipes.
-  search: (query: string, recipes: boolean) => void;
+  // Searches for `query`.
+  search: (query: string) => void;
   // Shows every list of the current details in full, up to `total` entries.
   showAll: (total: number) => void;
 }
@@ -173,9 +173,7 @@ export function ItemDetailView(props: {
                   type="button"
                   class="link"
                   title="Search for items with this tag"
-                  onClick={() =>
-                    props.navigation.search(`{ tag = "${tag}" }`, false)
-                  }
+                  onClick={() => props.navigation.search(`{ tag = "${tag}" }`)}
                 >
                   {tag}
                 </button>
@@ -216,7 +214,7 @@ export function RecipeDetailView(props: {
           class="link"
           title="Search for recipes of this type"
           onClick={() =>
-            props.navigation.search(`{ type = "${recipeType()}" }`, true)
+            props.navigation.search(`{ type = "${recipeType()}" }`)
           }
         >
           {recipeType()}

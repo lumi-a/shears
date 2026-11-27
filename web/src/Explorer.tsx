@@ -7,7 +7,13 @@ import {
   type Navigation,
   type Target,
 } from "./Details";
-import type { ItemDetail, Links, RecipeDetail, SessionClient } from "./session";
+import type {
+  ItemDetail,
+  LinkKind,
+  RecipeDetail,
+  SearchResults,
+  SessionClient,
+} from "./session";
 import { Split } from "./Split";
 
 // How many search results to show at once.
@@ -15,11 +21,10 @@ const SHOWN_RESULTS = 200;
 // How many recipes or slot members a detail view lists at once.
 const SHOWN_PER_LIST = 50;
 
-type Mode = "items" | "recipes";
-const MODES: Mode[] = ["items", "recipes"];
-
 // What a request to the Session came back with or why it failed.
 type Outcome<T> = { value: T } | { error: string };
+
+const KINDS: LinkKind[] = ["item", "recipe"];
 
 const messageOf = (caught: unknown) =>
   caught instanceof Error ? caught.message : String(caught);
@@ -67,7 +72,7 @@ function createLimit(initial: number, key: () => unknown) {
 const errorOf = <T,>(outcome: Outcome<T> | undefined) =>
   outcome !== undefined && "error" in outcome ? outcome.error : undefined;
 
-// Searches items or recipes as you type, and shows the details of what's
+// Searches items and recipes as you type, and shows the details of what's
 // clicked, with a history to go back and forth in. The query is a selector
 // like a rule's filter, or plain text as one id or /regex/.
 export function Explorer(props: {
@@ -78,13 +83,14 @@ export function Explorer(props: {
   request: { target: Target } | undefined;
 }) {
   const [query, setQuery] = createSignal("");
-  const [mode, setMode] = createSignal<Mode>("items");
+  // Which kinds the results list. Both by default.
+  const [listed, setListed] = createSignal({ item: true, recipe: true });
   const [history, setHistory] = createSignal<Target[]>([]);
   const [position, setPosition] = createSignal(-1);
   const target = () => history()[position()];
   const [resultLimit, raiseResultLimit] = createLimit(
     SHOWN_RESULTS,
-    () => `${mode()} ${query()}`,
+    () => `${listed().item} ${listed().recipe} ${query()}`,
   );
   const [detailLimit, raiseDetailLimit] = createLimit(SHOWN_PER_LIST, target);
 
@@ -94,10 +100,7 @@ export function Explorer(props: {
       setHistory([...kept, next]);
       setPosition(kept.length);
     },
-    search: (text, recipes) => {
-      setQuery(text);
-      setMode(recipes ? "recipes" : "items");
-    },
+    search: setQuery,
     showAll: raiseDetailLimit,
   };
 
@@ -109,7 +112,12 @@ export function Explorer(props: {
 
   const search = createLatest(() => {
     void props.revision;
-    return props.session.search(query(), mode() === "recipes", resultLimit());
+    return props.session.search(
+      query(),
+      listed().item,
+      listed().recipe,
+      resultLimit(),
+    );
   });
 
   const detail = createLatest<{ item: ItemDetail } | { recipe: RecipeDetail }>(
@@ -141,15 +149,9 @@ export function Explorer(props: {
       <Show when={errorOf(search())}>
         {(message) => <p class="error">{message()}</p>}
       </Show>
-      <Show when={valueOf<Links>(search())}>
+      <Show when={valueOf<SearchResults>(search())?.links}>
         {(found) => (
           <>
-            <p class="hint">
-              {found().total.toLocaleString()} {mode()}
-              <Show when={found().total > found().shown.length}>
-                , showing the first {found().shown.length}
-              </Show>
-            </p>
             <ul class="links">
               <For each={found().shown}>
                 {(link) => (
@@ -236,18 +238,32 @@ export function Explorer(props: {
           value={query()}
           onInput={(event) => setQuery(event.currentTarget.value)}
         />
-        <div class="modes" role="radiogroup" aria-label="Search for">
-          <For each={MODES}>
-            {(name) => (
-              <button
-                type="button"
-                role="radio"
-                aria-checked={mode() === name}
-                onClick={() => setMode(name)}
-              >
-                {name}
-              </button>
-            )}
+        <div class="kinds" role="group" aria-label="List">
+          <For each={KINDS}>
+            {(kind) => {
+              // null after an error, or if the query isn't for this kind.
+              const count = () =>
+                valueOf<SearchResults>(search())?.[`${kind}_count`] ?? null;
+              return (
+                <button
+                  type="button"
+                  class={kind}
+                  aria-pressed={listed()[kind]}
+                  disabled={count() === null}
+                  title={
+                    count() === null
+                      ? `The query isn't a selector for ${kind}s`
+                      : `List ${kind}s`
+                  }
+                  onClick={() =>
+                    setListed({ ...listed(), [kind]: !listed()[kind] })
+                  }
+                >
+                  {kind}s{" "}
+                  <span class="count">{count()?.toLocaleString() ?? "–"}</span>
+                </button>
+              );
+            }}
           </For>
         </div>
       </div>

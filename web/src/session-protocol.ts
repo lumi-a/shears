@@ -59,6 +59,14 @@ export interface Links {
   shown: Link[];
 }
 
+// Mirrors shears_wasm::explore::SearchResults. A count is null if the query
+// isn't a selector for that kind, e.g. recipes for `{ tag = "..." }`.
+export interface SearchResults {
+  item_count: number | null;
+  recipe_count: number | null;
+  links: Links;
+}
+
 // Mirrors shears_wasm::details::WhyStep.
 export type WhyStep =
   { via: { recipe: Link; output: Link } } | { required: string };
@@ -101,7 +109,13 @@ export type RequestBody =
   | { kind: "open"; bytes: ArrayBuffer; shapesToml: string }
   | { kind: "reingest"; shapesToml: string }
   | { kind: "analyze"; rulesToml: string }
-  | { kind: "search"; query: string; recipes: boolean; limit: number }
+  | {
+      kind: "search";
+      query: string;
+      items: boolean;
+      recipes: boolean;
+      limit: number;
+    }
   | { kind: "item"; id: string; limit: number }
   | { kind: "recipe"; id: string; limit: number };
 
@@ -112,7 +126,7 @@ export interface Results {
   open: SessionInfo;
   reingest: SessionInfo;
   analyze: Analysis;
-  search: Links;
+  search: SearchResults;
   item: ItemDetail;
   recipe: RecipeDetail;
 }

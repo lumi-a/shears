@@ -6,7 +6,7 @@ import type {
   Analysis,
   ItemDetail,
   Kind,
-  Links,
+  SearchResults,
   RecipeDetail,
   RequestBody,
   Response,
@@ -22,6 +22,7 @@ export type {
   Link,
   LinkKind,
   Links,
+  SearchResults,
   RecipeDetail,
   WhyStep,
   ParseReport,
@@ -81,14 +82,20 @@ export class SessionClient {
     return this.#send({ kind: "analyze", rulesToml });
   }
 
-  // The items (or with `recipes` the recipes) matching `query`: a selector
-  // like a rule's filter, or plain text as one id or /regex/. At most `limit`
-  // of them are shown.
-  search(query: string, recipes: boolean, limit: number): Promise<Links> {
-    return this.#send({ kind: "search", query, recipes, limit });
+  // The items and recipes matching `query`.
+  //
+  // Selector like a rule's filter, or plain text as one id or /regex/.
+  // Lists only the kinds asked for, at most `limit` of them.
+  search(
+    query: string,
+    items: boolean,
+    recipes: boolean,
+    limit: number,
+  ): Promise<SearchResults> {
+    return this.#send({ kind: "search", query, items, recipes, limit });
   }
 
-  // Everything about one item, each list cut off after `limit`.
+  // Everything about one item. Each list cuts off after `limit`.
   item(id: string, limit: number): Promise<ItemDetail> {
     return this.#send({ kind: "item", id, limit });
   }

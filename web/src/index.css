@@ -524,7 +524,7 @@ h3 {
   font-size: var(--font-size-small);
 }
 
-.modes button {
+.kinds button {
   height: 100%;
   border: none;
   border-left: 1px solid var(--border);
@@ -532,9 +532,21 @@ h3 {
   color: var(--fg-muted);
 }
 
-.modes button[aria-checked="true"] {
+.kinds button[aria-pressed="true"] {
   background: var(--bg-subtle);
   color: var(--fg);
+}
+
+.kinds button[aria-pressed="true"].item .count {
+  color: var(--item);
+}
+
+.kinds button[aria-pressed="true"].recipe .count {
+  color: var(--recipe);
+}
+
+.kinds .count {
+  font-variant-numeric: tabular-nums;
 }
 
 .explorer .error {
