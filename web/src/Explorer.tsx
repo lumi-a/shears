@@ -186,25 +186,25 @@ export function Explorer(props: {
 
   const details = (
     <div class="explorer-detail">
-      <div class="history">
-        <button
-          type="button"
-          disabled={position() <= 0}
-          onClick={() => setPosition(position() - 1)}
-          aria-label="Back"
-        >
-          ←
-        </button>
-        <button
-          type="button"
-          disabled={position() >= history().length - 1}
-          onClick={() => setPosition(position() + 1)}
-          aria-label="Forward"
-        >
-          →
-        </button>
-      </div>
       <div class="detail-body">
+        <div class="history">
+          <button
+            type="button"
+            disabled={position() <= 0}
+            onClick={() => setPosition(position() - 1)}
+            aria-label="Back"
+          >
+            ←
+          </button>
+          <button
+            type="button"
+            disabled={position() >= history().length - 1}
+            onClick={() => setPosition(position() + 1)}
+            aria-label="Forward"
+          >
+            →
+          </button>
+        </div>
         <Show
           when={target() !== undefined}
           fallback={<p class="hint">Click a result to see its details.</p>}

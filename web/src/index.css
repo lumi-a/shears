@@ -558,30 +558,51 @@ h3 {
 .explorer-results,
 .detail-body {
   overflow: auto;
-  padding: var(--space-2) var(--space-3);
+  padding: 0 var(--space-3);
 }
 
 .explorer-detail {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
 }
 
 .history {
+  float: right;
   display: flex;
-  border-bottom: 1px solid var(--border);
+  margin-left: var(--space-2);
+  border: 1px solid var(--border);
 }
 
 .history button {
   border: none;
-  border-right: 1px solid var(--border);
   background: none;
+}
+
+.history button + button {
+  border-left: 1px solid var(--border);
 }
 
 .detail-title {
   font-family: var(--font-mono);
   overflow-wrap: anywhere;
+}
+
+.detail-title.item {
+  color: var(--item);
+}
+
+.detail-title.recipe {
+  color: var(--recipe);
+}
+
+.detail-kind {
+  display: block;
+  font-family: var(--font-ui);
+  font-size: var(--font-size-small);
+  font-weight: normal;
+  color: var(--fg-muted);
 }
 
 .detail-body h4 {
