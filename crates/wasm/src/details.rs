@@ -1,5 +1,7 @@
 //! The explorer's detail view showing info about one item or recipe.
 
+use std::collections::BTreeSet;
+
 use serde::Serialize;
 use shears_core::analysis::edges::EdgeState;
 use shears_core::analysis::explain::cause_text;
@@ -167,10 +169,10 @@ impl Linker<'_> {
         let mut steps = Vec::new();
         let mut current = item;
         // Each step moves to the item that made the current one required, which was
-        // reached earlier in the analysis. So this ends, but cap it in case that ever breaks.
-        // TODO: Should we have a safety-check so that, if we ever visit a previously-visited
-        // item, we also break?
-        for _ in 0..self.graph.items().len() {
+        // reached earlier in the analysis, so no item comes up twice.
+        // But should one anyway, stop there instead of going in circles.
+        let mut visited = BTreeSet::new();
+        while visited.insert(current) {
             match analyzed.live.why(current) {
                 None => break,
                 Some(Why::Required(cause)) => {
