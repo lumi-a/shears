@@ -27,11 +27,17 @@ fn parse_query(query: &str, context: Context) -> Result<Option<Selector>, String
         let mut document: toml::Table = toml::from_str(&format!("{QUERY_PREFIX}{trimmed}"))
             .map_err(|error| {
                 // The full message would quote QUERY_PREFIX back, and count columns with it.
+                // toml leaves the message empty when the query ends too early, for some
+                // reason?
+                let message = match error.message() {
+                    "" => "incomplete query",
+                    message => message,
+                };
                 error.span().map_or_else(
-                    || error.message().to_owned(),
+                    || message.to_owned(),
                     |span| {
                         let column = span.start.saturating_sub(QUERY_PREFIX.len()) + 1;
-                        format!("{} (column {column})", error.message())
+                        format!("{message} (column {column})")
                     },
                 )
             })?;
@@ -156,5 +162,11 @@ mod tests {
     fn toml_errors_count_columns_from_the_query_itself() {
         let error = parse_query("{ mod = 1 2 }", Context::Item).expect_err("invalid TOML");
         assert!(error.ends_with("(column 11)"), "{error}");
+    }
+
+    #[test]
+    fn a_query_that_ends_too_early_says_so() {
+        let error = parse_query("{ id =", Context::Item).expect_err("incomplete TOML");
+        assert_eq!(error, "incomplete query (column 7)");
     }
 }
