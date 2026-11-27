@@ -1,25 +1,25 @@
 :root {
   color-scheme: light dark;
 
-  --bg: light-dark(#ffffff, #1b1b1d);
-  --bg-subtle: light-dark(#f4f4f5, #232326);
-  --bg-hover: light-dark(#e7e7ea, #2e2e32);
-  --fg: light-dark(#1b1b1d, #e6e6e8);
-  --fg-muted: light-dark(#6b6b73, #9a9aa3);
-  --border: light-dark(#d6d6db, #3a3a40);
-  --accent: light-dark(#2f5fd0, #7aa2ff);
-  --error: light-dark(#b42318, #ff8a80);
-  --item: light-dark(#1f6a85, #7cc4dd);
-  --recipe: light-dark(#8a4a0b, #e2a86a);
+  --bg: light-dark(oklch(100% 0 0), oklch(22% 0 0));
+  --bg-subtle: light-dark(oklch(97% 0 0), oklch(26% 0 0));
+  --bg-hover: light-dark(oklch(93% 0 0), oklch(30% 0 0));
+  --fg: light-dark(oklch(22% 0 0), oklch(93% 0 0));
+  --fg-muted: light-dark(oklch(53% 0 0), oklch(69% 0 0));
+  --border: light-dark(oklch(88% 0 0), oklch(35% 0 0));
+  --accent: light-dark(oklch(50% 0.2 265), oklch(72% 0.15 265));
+  --error: light-dark(oklch(50% 0.2 25), oklch(72% 0.15 25));
+  --item: light-dark(oklch(50% 0.1 60), oklch(78% 0.1 60));
+  --recipe: light-dark(oklch(50% 0.1 140), oklch(78% 0.1 140));
 
   /* TOML editor */
-  --editor-active-line: light-dark(rgb(0 0 0 / 0.03), rgb(255 255 255 / 0.022));
-  --editor-selection: light-dark(#cbd8f5, #34405c);
+  --editor-active-line: light-dark(oklch(0% 0 0 / 3%), oklch(100% 0 0 / 2%));
+  --editor-selection: light-dark(oklch(87.5% 0.04 265), oklch(12.5% 0.05 265));
   --syntax-comment: var(--fg-muted);
-  --syntax-key: light-dark(#7a3e9d, #d2a8ff);
+  --syntax-key: light-dark(oklch(50% 0.15 310), oklch(78% 0.15 310));
   --syntax-header: var(--accent);
-  --syntax-string: light-dark(#2b7a3d, #9ad48a);
-  --syntax-number: light-dark(#a35200, #ffb070);
+  --syntax-string: light-dark(oklch(50% 0.1 145), oklch(78% 0.1 145));
+  --syntax-number: light-dark(oklch(50% 0.1 50), oklch(78% 0.1 50));
 
   --font-ui: system-ui, sans-serif;
   --font-mono:
