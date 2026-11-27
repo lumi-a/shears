@@ -66,6 +66,61 @@ fn parse_query(query: &str, context: Context) -> Result<Option<Selector>, String
         .map_err(|error| error.to_string())
 }
 
+/// A plain-text query. These are matched fuzzily.
+#[derive(Debug, PartialEq, Eq)]
+struct TextQuery {
+    /// The query.
+    text: String,
+}
+
+impl TextQuery {
+    /// `query` as plain text. `None` if it's empty, TOML, or a `/regex/`.
+    fn parse(query: &str) -> Option<Self> {
+        let trimmed = query.trim();
+        if trimmed.is_empty() || trimmed.starts_with(['{', '[', '"', '/']) {
+            return None;
+        }
+        Some(Self {
+            text: trimmed.to_owned(),
+        })
+    }
+
+    /// The positions in `ids` that match with the relevant score. Unsorted.
+    ///
+    /// Without `:` in the text, only the part of each id after `:` is matched, so that
+    /// e.g. `iron` ranks `minecraft:iron_ingot` above `ironfurnaces:copper_furnace`.
+    fn matches(&self, ids: &[&str]) -> Vec<(u16, usize)> {
+        let whole_ids = self.text.contains(':');
+        let keys: Vec<&str> = ids
+            .iter()
+            .map(|&id| {
+                if whole_ids {
+                    id
+                } else {
+                    id.split_once(':').map_or(id, |(_, path)| path)
+                }
+            })
+            .collect();
+        frizbee::Matcher::from_query(&self.text, &frizbee::Config::default())
+            .match_list(&keys)
+            .into_iter()
+            .filter_map(|found| Some((found.score, usize::try_from(found.index).ok()?)))
+            .collect()
+    }
+}
+
+/// One match of a plain-text search.
+struct Hit<'graph> {
+    /// frizbee's score. Higher is better.
+    score: u16,
+    /// The matched id.
+    id: &'graph str,
+    /// Whether it's an item or a recipe.
+    kind: Kind,
+    /// See [`Link::live`].
+    live: Option<bool>,
+}
+
 #[wasm_bindgen]
 #[expect(
     clippy::multiple_inherent_impl,
@@ -76,9 +131,12 @@ impl Session {
     /// `web/src/session-protocol.ts`. Lists only the kinds asked for, at most `limit` of
     /// them. Items first.
     ///
-    /// A query is a selector as in a rule's `filter`, or plain text as one id or `/regex/`.
-    /// It's read as an item selector and as a recipe selector. A kind it's no valid selector
-    /// for (e.g. recipes, for `tag`) has no matches.
+    /// A query is one of the following:
+    /// - `/regex/` for ids
+    /// - a selector as in a rule's `filter`. A selector is read as an item selector and as a
+    ///   recipe selector. If it's not a valid selector for recipes (respectively items), it
+    ///   doesn't match recipes (respectively items).
+    /// - or plain text. This is matched fuzzily.
     ///
     /// # Errors
     ///
@@ -90,6 +148,10 @@ impl Session {
         recipes: bool,
         limit: usize,
     ) -> Result<String, JsValue> {
+        if let Some(text) = TextQuery::parse(query) {
+            return serde_json::to_string(&search_text(self, &text, items, recipes, limit))
+                .map_err(|error| js_error(&error));
+        }
         let item_filter = parse_query(query, Context::Item);
         let recipe_filter = parse_query(query, Context::Recipe);
         if let (Err(item_error), Err(recipe_error)) = (&item_filter, &recipe_filter) {
@@ -154,11 +216,87 @@ impl Session {
     }
 }
 
+/// [`Session::search_json`] for plain text.
+fn search_text(
+    session: &Session,
+    query: &TextQuery,
+    items: bool,
+    recipes: bool,
+    limit: usize,
+) -> SearchResults {
+    let graph = &session.graph;
+    let liveness = session.analyzed.as_ref().map(|analyzed| &analyzed.live);
+
+    let item_indices: Vec<ItemIndex> = graph.item_indices().collect();
+    let item_ids: Vec<&str> = item_indices
+        .iter()
+        .map(|&item| graph.item(item).id())
+        .collect();
+    let item_matches = query.matches(&item_ids);
+    let recipe_indices: Vec<RecipeIndex> = graph.recipe_indices().collect();
+    let recipe_ids: Vec<&str> = recipe_indices
+        .iter()
+        .map(|&recipe| graph.recipe(recipe).id())
+        .collect();
+    let recipe_matches = query.matches(&recipe_ids);
+
+    let mut hits = Vec::new();
+    if items {
+        hits.extend(item_matches.iter().filter_map(|&(score, position)| {
+            let item = *item_indices.get(position)?;
+            let id = *item_ids.get(position)?;
+            Some(Hit {
+                score,
+                id,
+                kind: Kind::Item,
+                live: liveness.map(|live| live.is_transitively_required(item)),
+            })
+        }));
+    }
+    if recipes {
+        hits.extend(recipe_matches.iter().filter_map(|&(score, position)| {
+            let recipe = *recipe_indices.get(position)?;
+            let id = *recipe_ids.get(position)?;
+            Some(Hit {
+                score,
+                id,
+                kind: Kind::Recipe,
+                live: liveness.map(|live| live.is_recipe_transitively_required(recipe)),
+            })
+        }));
+    }
+    // Best first. Among equals the shorter id, as it has less besides the match, then by
+    // id, then items before recipes (the sort is stable).
+    hits.sort_by(|a, b| {
+        b.score
+            .cmp(&a.score)
+            .then(a.id.len().cmp(&b.id.len()))
+            .then(a.id.cmp(b.id))
+    });
+
+    SearchResults {
+        item_count: Some(item_matches.len()),
+        recipe_count: Some(recipe_matches.len()),
+        links: Links {
+            total: hits.len(),
+            shown: hits
+                .into_iter()
+                .take(limit)
+                .map(|hit| Link {
+                    kind: hit.kind,
+                    id: hit.id.to_owned(),
+                    live: hit.live,
+                })
+                .collect(),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use shears_core::rules::selector::Context;
 
-    use super::parse_query;
+    use super::{TextQuery, parse_query};
 
     #[test]
     fn an_empty_query_matches_everything() {
@@ -195,5 +333,36 @@ mod tests {
     fn a_query_that_ends_too_early_says_so() {
         let error = parse_query("{ id =", Context::Item).expect_err("incomplete TOML");
         assert_eq!(error, "incomplete query (column 7)");
+    }
+
+    #[test]
+    fn plain_text_is_anything_but_toml_or_a_regex() {
+        assert_eq!(
+            TextQuery::parse(" iron dust "),
+            Some(TextQuery {
+                text: "iron dust".to_owned(),
+            })
+        );
+        assert_eq!(TextQuery::parse("/iron/"), None);
+        assert_eq!(TextQuery::parse("{ mod = \"gtceu\" }"), None);
+        assert_eq!(TextQuery::parse("  "), None);
+    }
+
+    #[test]
+    fn text_matches_the_path_unless_it_has_a_colon() {
+        let ids = ["minecraft:iron_ingot", "ironfurnaces:copper_furnace"];
+        let positions = |query: &str| {
+            let mut found: Vec<usize> = TextQuery::parse(query)
+                .expect("plain text")
+                .matches(&ids)
+                .into_iter()
+                .map(|(_, position)| position)
+                .collect();
+            found.sort_unstable();
+            found
+        };
+
+        assert_eq!(positions("iron"), [0]);
+        assert_eq!(positions("ironfurnaces:"), [1]);
     }
 }

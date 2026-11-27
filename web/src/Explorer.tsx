@@ -74,7 +74,7 @@ const errorOf = <T,>(outcome: Outcome<T> | undefined) =>
 
 // Searches items and recipes as you type, and shows the details of what's
 // clicked, with a history to go back and forth in. The query is a selector
-// like a rule's filter, or plain text as one id or /regex/.
+// like a rule's filter, an id /regex/, or plain text matched fuzzily.
 export function Explorer(props: {
   session: SessionClient;
   // Changes whenever the graph or the analysis did.
@@ -232,7 +232,7 @@ export function Explorer(props: {
       <div class="explorer-search">
         <input
           type="search"
-          placeholder={`id, /regex/, or { mod = "gtceu" }`}
+          placeholder={`iron ingot, /regex/, or { mod = "gtceu" }`}
           aria-label="Search"
           spellcheck={false}
           value={query()}
