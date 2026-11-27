@@ -56,12 +56,6 @@ struct Analysis {
 /// Only needed across a re-ingest. A re-ingest can change indices, so the analysis before it
 /// can only be compared by id. Without a re-ingest in between, [`Diff::on_graph`] compares the
 /// kept [`Analyzed`] directly.
-///
-/// TODO: If we want to be clever and save memory (e.g. because we assume the diff will always
-/// be small?), we could instead do some hash-stuff shenanigans. Something like a hash set, but
-/// without storing the underlying data unless there is a hash conflict. That sounds rough
-/// though. Also makes resizing the hash set very costly, though I suppose we would know the
-/// size upfront.
 #[derive(Debug)]
 struct Snapshot {
     /// Ids of the transitively required items.
@@ -173,9 +167,6 @@ struct Links {
     /// How many there are in total.
     total: usize,
     /// The first of them, in order, at most as many as asked for.
-    ///
-    /// TODO: We should be able to save a lot of memory if, instead of strings (in Link)
-    /// we saved indices. Or perhaps, for each item / recipe just save its next neighbor.
     shown: Vec<Link>,
 }
 
