@@ -125,6 +125,17 @@ export function Explorer(props: {
     },
   );
 
+  // Apart, so each <Show> below only re-renders when it switches between item
+  // and recipe, and otherwise passes the new detail on.
+  const itemDetail = () => {
+    const shown = valueOf(detail());
+    return shown !== undefined && "item" in shown ? shown.item : undefined;
+  };
+  const recipeDetail = () => {
+    const shown = valueOf(detail());
+    return shown !== undefined && "recipe" in shown ? shown.recipe : undefined;
+  };
+
   const results = (
     <div class="explorer-results">
       <Show when={errorOf(search())}>
@@ -199,18 +210,15 @@ export function Explorer(props: {
           <Show when={errorOf(detail())}>
             {(message) => <p class="error">{message()}</p>}
           </Show>
-          <Show when={valueOf(detail())}>
-            {(shown) => {
-              const current = shown();
-              return "item" in current ? (
-                <ItemDetailView detail={current.item} navigation={navigation} />
-              ) : (
-                <RecipeDetailView
-                  detail={current.recipe}
-                  navigation={navigation}
-                />
-              );
-            }}
+          <Show when={itemDetail()}>
+            {(item) => (
+              <ItemDetailView detail={item()} navigation={navigation} />
+            )}
+          </Show>
+          <Show when={recipeDetail()}>
+            {(recipe) => (
+              <RecipeDetailView detail={recipe()} navigation={navigation} />
+            )}
           </Show>
         </Show>
       </div>
