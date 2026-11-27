@@ -10,6 +10,23 @@ export interface Navigation {
   open: (target: Target) => void;
   // Searches for `query` among items or recipes.
   search: (query: string, recipes: boolean) => void;
+  // Shows every list of the current details in full, up to `total` entries.
+  showAll: (total: number) => void;
+}
+
+// The last entry of a list that's been cut off.
+// Specifies how many more there are and a button to show them all.
+export function ShowAll(props: { hidden: number; onClick: () => void }) {
+  return (
+    <Show when={props.hidden > 0}>
+      <li class="more">
+        and {props.hidden.toLocaleString()} more.{" "}
+        <button type="button" class="link" onClick={() => props.onClick()}>
+          Show all
+        </button>
+      </li>
+    </Show>
+  );
 }
 
 // An item or recipe id, also coloured by which of the two it is.
@@ -55,10 +72,31 @@ function LinkButton(props: { link: Link; navigation: Navigation }) {
     <button
       type="button"
       class="link"
-      onClick={() => props.navigation.open(props.link)}
+      onClick={() =>
+        props.navigation.open({ kind: props.link.kind, id: props.link.id })
+      }
     >
       <LinkText link={props.link} />
     </button>
+  );
+}
+
+// The links of a list the Session cut off and a button to fetch the rest.
+function LinkItems(props: { links: Links; navigation: Navigation }) {
+  return (
+    <>
+      <For each={props.links.shown}>
+        {(link) => (
+          <li>
+            <LinkButton link={link} navigation={props.navigation} />
+          </li>
+        )}
+      </For>
+      <ShowAll
+        hidden={props.links.total - props.links.shown.length}
+        onClick={() => props.navigation.showAll(props.links.total)}
+      />
+    </>
   );
 }
 
@@ -68,23 +106,13 @@ function LinkList(props: {
   links: Links;
   navigation: Navigation;
 }) {
-  const hidden = () => props.links.total - props.links.shown.length;
   return (
     <>
       <h4>
         {props.title} ({props.links.total.toLocaleString()})
       </h4>
       <ul class="links">
-        <For each={props.links.shown}>
-          {(link) => (
-            <li>
-              <LinkButton link={link} navigation={props.navigation} />
-            </li>
-          )}
-        </For>
-        <Show when={hidden() > 0}>
-          <li class="hint">and {hidden().toLocaleString()} more</li>
-        </Show>
+        <LinkItems links={props.links} navigation={props.navigation} />
       </ul>
     </>
   );
@@ -218,22 +246,7 @@ export function RecipeDetailView(props: {
                 </span>
               </Show>
               <ul class="links">
-                <For each={slot.members.shown}>
-                  {(member) => (
-                    <li>
-                      <LinkButton link={member} navigation={props.navigation} />
-                    </li>
-                  )}
-                </For>
-                <Show when={slot.members.total > slot.members.shown.length}>
-                  <li class="hint">
-                    and{" "}
-                    {(
-                      slot.members.total - slot.members.shown.length
-                    ).toLocaleString()}{" "}
-                    more
-                  </li>
-                </Show>
+                <LinkItems links={slot.members} navigation={props.navigation} />
               </ul>
             </li>
           )}

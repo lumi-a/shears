@@ -6,7 +6,7 @@ import {
   type JSX,
   type ParentProps,
 } from "solid-js";
-import { LinkText, type Target } from "./Details";
+import { LinkText, ShowAll, type Target } from "./Details";
 import type { Diagnostic, ParseReport } from "./session";
 
 // How many entries a list renders before "and N more". A big export has tens
@@ -29,10 +29,12 @@ export function CappedList(props: {
   items: string[];
   links?: { kind: Target["kind"]; open: (target: Target) => void };
 }) {
-  const hidden = () => props.items.length - SHOWN_PER_LIST;
+  const [all, setAll] = createSignal(false);
+  const shown = () =>
+    all() ? props.items : props.items.slice(0, SHOWN_PER_LIST);
   return (
     <ul>
-      <For each={props.items.slice(0, SHOWN_PER_LIST)}>
+      <For each={shown()}>
         {(id) => (
           <li>
             <Show when={props.links} fallback={id}>
@@ -50,9 +52,10 @@ export function CappedList(props: {
           </li>
         )}
       </For>
-      <Show when={hidden() > 0}>
-        <li class="more">and {hidden()} more</li>
-      </Show>
+      <ShowAll
+        hidden={props.items.length - shown().length}
+        onClick={() => setAll(true)}
+      />
     </ul>
   );
 }

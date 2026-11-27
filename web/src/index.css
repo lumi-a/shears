@@ -373,7 +373,7 @@ h3 {
   white-space: nowrap;
 }
 
-.report .more {
+.more {
   font-family: var(--font-ui);
   color: var(--fg-muted);
 }

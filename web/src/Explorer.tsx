@@ -3,6 +3,7 @@ import {
   ItemDetailView,
   LinkText,
   RecipeDetailView,
+  ShowAll,
   type Navigation,
   type Target,
 } from "./Details";
@@ -49,6 +50,20 @@ function createLatest<T>(request: () => Promise<T> | undefined) {
 
 const valueOf = <T,>(outcome: Outcome<T> | undefined) =>
   outcome !== undefined && "value" in outcome ? outcome.value : undefined;
+// A list limit the page can raise which goes back to `initial` whenever `key`
+// changes, e.g. on a new query.
+function createLimit(initial: number, key: () => unknown) {
+  const [raised, setRaised] = createSignal<{ key: unknown; to: number }>();
+  const limit = () => {
+    const current = raised();
+    return current !== undefined && current.key === key()
+      ? current.to
+      : initial;
+  };
+  const raise = (to: number) => setRaised({ key: key(), to });
+  return [limit, raise] as const;
+}
+
 const errorOf = <T,>(outcome: Outcome<T> | undefined) =>
   outcome !== undefined && "error" in outcome ? outcome.error : undefined;
 
@@ -67,6 +82,11 @@ export function Explorer(props: {
   const [history, setHistory] = createSignal<Target[]>([]);
   const [position, setPosition] = createSignal(-1);
   const target = () => history()[position()];
+  const [resultLimit, raiseResultLimit] = createLimit(
+    SHOWN_RESULTS,
+    () => `${mode()} ${query()}`,
+  );
+  const [detailLimit, raiseDetailLimit] = createLimit(SHOWN_PER_LIST, target);
 
   const navigation: Navigation = {
     open: (next) => {
@@ -78,6 +98,7 @@ export function Explorer(props: {
       setQuery(text);
       setMode(recipes ? "recipes" : "items");
     },
+    showAll: raiseDetailLimit,
   };
 
   createEffect(() => {
@@ -88,7 +109,7 @@ export function Explorer(props: {
 
   const search = createLatest(() => {
     void props.revision;
-    return props.session.search(query(), mode() === "recipes", SHOWN_RESULTS);
+    return props.session.search(query(), mode() === "recipes", resultLimit());
   });
 
   const detail = createLatest<{ item: ItemDetail } | { recipe: RecipeDetail }>(
@@ -97,11 +118,9 @@ export function Explorer(props: {
       const shown = target();
       if (shown === undefined) return undefined;
       return shown.kind === "item"
-        ? props.session
-            .item(shown.id, SHOWN_PER_LIST)
-            .then((item) => ({ item }))
+        ? props.session.item(shown.id, detailLimit()).then((item) => ({ item }))
         : props.session
-            .recipe(shown.id, SHOWN_PER_LIST)
+            .recipe(shown.id, detailLimit())
             .then((recipe) => ({ recipe }));
     },
   );
@@ -132,13 +151,19 @@ export function Explorer(props: {
                           ? "true"
                           : undefined
                       }
-                      onClick={() => navigation.open(link)}
+                      onClick={() =>
+                        navigation.open({ kind: link.kind, id: link.id })
+                      }
                     >
                       <LinkText link={link} />
                     </button>
                   </li>
                 )}
               </For>
+              <ShowAll
+                hidden={found().total - found().shown.length}
+                onClick={() => raiseResultLimit(found().total)}
+              />
             </ul>
           </>
         )}
