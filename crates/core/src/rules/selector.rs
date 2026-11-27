@@ -299,10 +299,11 @@ fn bool_value(value: &toml::Value, key: &'static str) -> Result<bool, SelectorEr
     })
 }
 
-/// The namespace part of an id, i.e. everything before the first `:`.
+/// The namespace part of an id, i.e. everything before the first `:`. For an id without one,
+/// that's `minecraft`, as in Minecraft.
 fn namespace_of(id: &str) -> &str {
     id.split_once(':')
-        .map_or(id, |(namespace, _rest)| namespace)
+        .map_or("minecraft", |(namespace, _rest)| namespace)
 }
 
 /// The selector-facing name for an [`ItemKind`].
@@ -526,7 +527,7 @@ mod tests {
     #[test]
     fn mod_matches_the_namespace_only() {
         let (graph, _required) = parse_graph(
-            "gtceu:macerator/macerate_cobblestone: minecraft:cobblestone -> gtceu:stone_dust",
+            "gtceu:macerator/macerate_cobblestone: cobblestone -> gtceu:stone_dust",
         );
         let select = selector(r#"filter = { mod = "gtceu" }"#, Context::Item);
 
@@ -535,19 +536,15 @@ mod tests {
             &graph,
             item(&graph, "gtceu:stone_dust")
         ));
-        assert!(!matches_item(
-            &select,
-            &graph,
-            item(&graph, "minecraft:cobblestone")
-        ));
+        assert!(!matches_item(&select, &graph, item(&graph, "cobblestone")));
     }
 
     #[test]
     fn object_is_and_array_is_or() {
         let (graph, _required) = parse_graph(
             "
-            gtceu:macerator/macerate_cobblestone: minecraft:cobblestone -> gtceu:stone_dust
-            gtceu:macerator/macerate_iron_ingot:  minecraft:iron_ingot -> gtceu:iron_dust
+            gtceu:macerator/macerate_cobblestone: cobblestone -> gtceu:stone_dust
+            gtceu:macerator/macerate_iron_ingot:  iron_ingot -> gtceu:iron_dust
             ",
         );
         let and_select = selector(
@@ -555,33 +552,29 @@ mod tests {
             Context::Item,
         );
         let or_select = selector(
-            r#"filter = [ { id = "minecraft:cobblestone" }, { id = "minecraft:iron_ingot" } ]"#,
+            r#"filter = [ { id = "cobblestone" }, { id = "iron_ingot" } ]"#,
             Context::Item,
         );
 
         assert!(matches_item(
             &and_select,
             &graph,
-            item(&graph, "minecraft:iron_ingot")
+            item(&graph, "iron_ingot")
         ));
         assert!(
             !matches_item(&and_select, &graph, item(&graph, "gtceu:iron_dust")),
             "matches the id, but not the mod"
         );
         assert!(
-            !matches_item(&and_select, &graph, item(&graph, "minecraft:cobblestone")),
+            !matches_item(&and_select, &graph, item(&graph, "cobblestone")),
             "matches the mod, but not the id"
         );
         assert!(matches_item(
             &or_select,
             &graph,
-            item(&graph, "minecraft:cobblestone")
+            item(&graph, "cobblestone")
         ));
-        assert!(matches_item(
-            &or_select,
-            &graph,
-            item(&graph, "minecraft:iron_ingot")
-        ));
+        assert!(matches_item(&or_select, &graph, item(&graph, "iron_ingot")));
         assert!(!matches_item(
             &or_select,
             &graph,
@@ -593,22 +586,14 @@ mod tests {
     fn not_negates_the_inner_selector() {
         let (graph, _required) = parse_graph(
             "
-            gtceu:macerator/macerate_cobblestone: minecraft:cobblestone -> gtceu:stone_dust
-            gtceu:macerator/macerate_iron_ingot:  minecraft:iron_ingot -> gtceu:iron_dust
+            gtceu:macerator/macerate_cobblestone: cobblestone -> gtceu:stone_dust
+            gtceu:macerator/macerate_iron_ingot:  iron_ingot -> gtceu:iron_dust
             ",
         );
         let select = selector(r#"filter = { not = { mod = "minecraft" } }"#, Context::Item);
 
-        assert!(!matches_item(
-            &select,
-            &graph,
-            item(&graph, "minecraft:cobblestone")
-        ));
-        assert!(!matches_item(
-            &select,
-            &graph,
-            item(&graph, "minecraft:iron_ingot")
-        ));
+        assert!(!matches_item(&select, &graph, item(&graph, "cobblestone")));
+        assert!(!matches_item(&select, &graph, item(&graph, "iron_ingot")));
         assert!(matches_item(
             &select,
             &graph,

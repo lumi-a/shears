@@ -22,7 +22,9 @@ use toml::de::Error as TomlError;
 
 use super::ingredient::Leaf;
 use super::path::Path;
-use super::{resolve_leaves, resolve_output_id, slot_tag, RecipeDraft, Resolver};
+use super::{
+    RecipeDraft, Resolver, resolve_leaves, resolve_output_id, slot_tag, with_namespace,
+};
 use crate::model::{Output, Slot};
 
 /// Where a [`MemberCase::Item`]'s base id comes from.
@@ -440,7 +442,7 @@ fn extract_leaf(node: &Value, members: &[MemberCase]) -> Option<Leaf> {
         match member {
             MemberCase::Tag(path) => {
                 if let Some(tag) = path.resolve(node).and_then(Value::as_str) {
-                    return Some(Leaf::Tag(tag.to_owned()));
+                    return Some(Leaf::Tag(with_namespace(tag).into_owned()));
                 }
             }
             MemberCase::Item { base, id_suffix } => {

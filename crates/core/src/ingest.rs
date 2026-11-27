@@ -20,6 +20,7 @@ pub mod shapes;
 mod vanilla;
 
 use core::cell::RefCell;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
@@ -117,6 +118,22 @@ struct Resolver<'a> {
 /// Interns every item/fluid id referenced while parsing a recipe (directly, or via a tag's
 /// expanded members).
 ///
+/// `id` with Minecraft's default namespace `minecraft:` in front, if it has no namespace.
+///
+/// Minecraft reads an id without a `:` as a `minecraft:` id, and some recipes rely on that,
+/// e.g. `chipped_express`'s stonecutting recipes with `"result": "dirt"`. Only the part before
+/// a synthetic id's `{` counts, since an NBT suffix like `{configuration:1}` has `:`s of its
+/// own. Ids that already have a namespace are returned as they are, so this can be applied
+/// twice.
+fn with_namespace(id: &str) -> Cow<'_, str> {
+    let base = id.split('{').next().unwrap_or(id);
+    if base.contains(':') {
+        Cow::Borrowed(id)
+    } else {
+        Cow::Owned(format!("minecraft:{id}"))
+    }
+}
+
 /// A plain registered id and a synthetic one (folded from a base id and an NBT string or
 /// circuit configuration, see `shapes::fold_id_suffix`) are treated identically here.
 ///
@@ -136,19 +153,22 @@ impl ItemInterner {
     /// Interns `key`, returning its provisional index. Stable across repeated calls with the
     /// same key.
     ///
+    /// `key` gets [`with_namespace`] first, so `dirt` and `minecraft:dirt` are one item.
+    ///
     /// # Panics
     ///
     /// Only if a single export references more than [`u32::MAX`] distinct ids, which isn't a
     /// real export this tool will ever see.
-    fn intern(&mut self, key: &str) -> ItemIndex {
-        if let Some(&index) = self.by_key.get(key) {
+    fn intern(&mut self, raw_key: &str) -> ItemIndex {
+        let key = with_namespace(raw_key);
+        if let Some(&index) = self.by_key.get(key.as_ref()) {
             return index;
         }
         let index = ItemIndex::new(u32::try_from(self.by_key.len()).expect(
             "fewer than u32::MAX referenced ids in one export. \
             Please open an issue if this is a problem for you.",
         ));
-        let _: Option<ItemIndex> = self.by_key.insert(key.to_owned(), index);
+        let _: Option<ItemIndex> = self.by_key.insert(key.into_owned(), index);
         index
     }
 
@@ -385,13 +405,17 @@ fn parse_registry_keys(bytes: &[u8]) -> Result<BTreeSet<String>, String> {
 
 /// Parses a tag file.
 ///
-/// These are flat arrays of member ids, where a `#`-prefix is another tag.
+/// These are flat arrays of member ids, where a `#`-prefix is another tag. Every id gets
+/// [`with_namespace`].
 fn parse_tag_members(bytes: &[u8]) -> Result<Vec<String>, String> {
     match serde_json::from_slice::<Value>(bytes) {
         Ok(Value::Array(entries)) => entries
             .into_iter()
             .map(|entry| match entry {
-                Value::String(member) => Ok(member),
+                Value::String(member) => Ok(member.strip_prefix('#').map_or_else(
+                    || with_namespace(&member).into_owned(),
+                    |tag| format!("#{}", with_namespace(tag)),
+                )),
                 Value::Null
                 | Value::Bool(_)
                 | Value::Number(_)
@@ -883,9 +907,9 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use super::{
-        build_items, ingest, resolve_all_tags, resolve_output_id, tag_id_from_path,
-        validate_chance, ItemInterner, ParseReport, PlainResolverParts, RawFile,
-        DEFAULT_SHAPES_TOML,
+        DEFAULT_SHAPES_TOML, ItemInterner, ParseReport, PlainResolverParts, RawFile,
+        build_items, ingest, parse_tag_members, resolve_all_tags, resolve_output_id,
+        tag_id_from_path, validate_chance, with_namespace,
     };
     use crate::model::{ItemIndex, ItemKind};
 
@@ -1129,7 +1153,13 @@ mod tests {
 
         let (sorted_keys, remap) = interner.finish(iter::empty());
 
-        assert_eq!(sorted_keys, vec!["a_first".to_owned(), "z_last".to_owned()]);
+        assert_eq!(
+            sorted_keys,
+            vec![
+                "minecraft:a_first".to_owned(),
+                "minecraft:z_last".to_owned()
+            ]
+        );
         // "z_last"'s provisional index was 0.
         assert_eq!(
             remap.first().copied(),
@@ -1141,6 +1171,45 @@ mod tests {
             remap.get(1).copied(),
             Some(ItemIndex::new(0)),
             "a_first sorts first, so index 0"
+        );
+    }
+
+    #[test]
+    fn with_namespace_adds_minecraft_only_where_the_namespace_is_missing() {
+        assert_eq!(with_namespace("dirt"), "minecraft:dirt");
+        assert_eq!(with_namespace("minecraft:dirt"), "minecraft:dirt");
+        assert_eq!(with_namespace("chipped:dirt"), "chipped:dirt");
+        // The `:` in an NBT suffix isn't a namespace.
+        assert_eq!(
+            with_namespace("programmed_circuit{configuration:1}"),
+            "minecraft:programmed_circuit{configuration:1}"
+        );
+        assert_eq!(
+            with_namespace("gtceu:programmed_circuit{configuration:1}"),
+            "gtceu:programmed_circuit{configuration:1}"
+        );
+    }
+
+    #[test]
+    fn item_interner_treats_an_id_without_a_namespace_as_a_minecraft_id() {
+        let mut interner = ItemInterner::default();
+
+        assert_eq!(interner.intern("dirt"), interner.intern("minecraft:dirt"));
+    }
+
+    #[test]
+    fn tag_members_without_a_namespace_get_minecraft() {
+        let members = parse_tag_members(br##"["dirt", "#logs", "chipped:dirt", "#c:dirts"]"##)
+            .expect("a valid tag file");
+
+        assert_eq!(
+            members,
+            [
+                "minecraft:dirt",
+                "#minecraft:logs",
+                "chipped:dirt",
+                "#c:dirts"
+            ]
         );
     }
 

@@ -2,6 +2,8 @@
 
 use serde_json::Value;
 
+use super::with_namespace;
+
 /// A single concrete alternative in an ingredient's OR-list.
 ///
 /// Either singleton, or tag-set.
@@ -21,7 +23,7 @@ fn parse_leaf(value: &Value) -> Option<Leaf> {
     match value {
         Value::Object(map) => match (map.get("item"), map.get("tag")) {
             (Some(Value::String(item)), _) => Some(Leaf::Item(item.clone())),
-            (_, Some(Value::String(tag))) => Some(Leaf::Tag(tag.clone())),
+            (_, Some(Value::String(tag))) => Some(Leaf::Tag(with_namespace(tag).into_owned())),
             _ => None,
         },
         Value::Null
