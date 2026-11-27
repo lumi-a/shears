@@ -37,14 +37,14 @@ export class SessionClient {
   #worker = new Worker(new URL("./session.worker.ts", import.meta.url), {
     type: "module",
   });
-  #nextId = 0;
+  #nextSeq = 0;
   #pending = new Map<number, Pending>();
 
   constructor() {
     this.#worker.onmessage = (event: MessageEvent<Response>) => {
       const response = event.data;
-      const pending = this.#pending.get(response.id);
-      this.#pending.delete(response.id);
+      const pending = this.#pending.get(response.seq);
+      this.#pending.delete(response.seq);
       if (response.ok) {
         pending?.resolve(response.result);
       } else {
@@ -104,13 +104,13 @@ export class SessionClient {
     body: Extract<RequestBody, { kind: K }>,
     transfer: Transferable[] = [],
   ): Promise<Results[K]> {
-    const id = this.#nextId++;
+    const seq = this.#nextSeq++;
     return new Promise<Results[K]>((resolve, reject) => {
-      this.#pending.set(id, {
+      this.#pending.set(seq, {
         resolve: resolve as (result: Results[Kind]) => void,
         reject,
       });
-      this.#worker.postMessage({ ...body, id }, transfer);
+      this.#worker.postMessage({ ...body, seq }, transfer);
     });
   }
 }

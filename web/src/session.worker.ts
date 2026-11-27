@@ -75,10 +75,12 @@ self.onmessage = async (event: MessageEvent<Request>) => {
   const request = event.data;
   let response: Response;
   try {
-    response = { id: request.id, ok: true, result: handle(request) };
+    response = { seq: request.seq, ok: true, result: handle(request) };
   } catch (error) {
+    // Only the message reaches the page, so the stack (if any) goes here.
+    console.error(error);
     // Errors from Rust arrive as plain strings for now.
-    response = { id: request.id, ok: false, error: String(error) };
+    response = { seq: request.seq, ok: false, error: String(error) };
   }
   postMessage(response);
 };

@@ -117,8 +117,9 @@ export interface Results {
   recipe: RecipeDetail;
 }
 
-export type Request = RequestBody & { id: number };
+// `seq` pairs a response with its request. (Not `id`: that would clash with an item's.)
+export type Request = RequestBody & { seq: number };
 
 export type Response =
-  | { id: number; ok: true; result: Results[Kind] }
-  | { id: number; ok: false; error: string };
+  | { seq: number; ok: true; result: Results[Kind] }
+  | { seq: number; ok: false; error: string };
