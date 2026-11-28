@@ -85,7 +85,8 @@ export class SessionClient {
 
   // The items and recipes matching `query`.
   //
-  // Selector like a rule's filter, an id /regex/, or plain text matched fuzzily.
+  // A selector like a rule's filter or an id /regex/, plain text matched
+  // fuzzily, or text and a filter together, the text ranking the filter's.
   // Lists only the kinds asked for, at most `limit` of them.
   search(
     query: string,
