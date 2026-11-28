@@ -711,9 +711,9 @@ button.link {
   text-align: left;
 }
 
-button.link:hover:not(:disabled):not(:has(.link-text)) {
-  background: none;
-  text-decoration: underline;
+button.link:not(:has(.link-text)) {
+  text-decoration: underline 1.5px;
+  text-underline-offset: 0.2em;
 }
 
 button.link[aria-current="true"] {
