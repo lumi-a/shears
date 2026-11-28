@@ -1,24 +1,34 @@
 // Messages between the page (session.ts) and the worker holding the Session
 // (session.worker.ts).
 
-// Mirrors shears_core::ingest::About: what a diagnostic is about.
-export type About =
-  | { kind: "file"; path: string }
-  | { kind: "tag"; id: string }
-  | { kind: "item"; id: string };
+// Generated from the Rust types by ts-rs when running `cargo test`, see .cargo/config.toml.
+import type { About } from "./generated/About";
+import type { Analysis } from "./generated/Analysis";
+import type { AnalysisDiff } from "./generated/AnalysisDiff";
+import type { Diagnostic } from "./generated/Diagnostic";
+import type { ItemDetail } from "./generated/ItemDetail";
+import type { Link } from "./generated/Link";
+import type { LinkKind } from "./generated/LinkKind";
+import type { Links } from "./generated/Links";
+import type { ParseReport } from "./generated/ParseReport";
+import type { RecipeDetail } from "./generated/RecipeDetail";
+import type { SearchResults } from "./generated/SearchResults";
+import type { WhyStep } from "./generated/WhyStep";
 
-// Mirrors shears_core::ingest::Diagnostic, as serialized by Session::report_json.
-export interface Diagnostic {
-  about: About;
-  message: string;
-}
-
-// Mirrors shears_core::ingest::ParseReport, as serialized by Session::report_json.
-export interface ParseReport {
-  diagnostics: Diagnostic[];
-  recipe_type_counts: Record<string, number>;
-  registered_but_unreferenced: string[];
-}
+export type {
+  About,
+  Analysis,
+  AnalysisDiff,
+  Diagnostic,
+  ItemDetail,
+  Link,
+  LinkKind,
+  Links,
+  ParseReport,
+  RecipeDetail,
+  SearchResults,
+  WhyStep,
+};
 
 // Everything the page knows about the current Session.
 export interface SessionInfo {
@@ -27,89 +37,6 @@ export interface SessionInfo {
   itemCount: number;
   recipeCount: number;
   report: ParseReport;
-}
-
-// Mirrors shears_wasm::Diff. Every list consists of ids and is sorted.
-export interface AnalysisDiff {
-  items_added: string[];
-  items_removed: string[];
-  recipes_added: string[];
-  recipes_removed: string[];
-}
-
-// Mirrors shears_wasm::Analysis, as serialized by Session::analyze_json.
-export interface Analysis {
-  required_count: number;
-  transitively_required_item_count: number;
-  transitively_required_recipe_count: number;
-  warnings: string[];
-  // Against the previous successful analysis, null for the first one.
-  diff: AnalysisDiff | null;
-}
-
-// Mirrors shears_wasm::Kind.
-export type LinkKind = "item" | "recipe";
-
-// Mirrors shears_wasm::Link, a reference to an item or recipe.
-// ive: whether it's transitively required (an item) or propagates (a recipe),
-// null before the first analysis.
-export interface Link {
-  kind: LinkKind;
-  id: string;
-  live: boolean | null;
-}
-
-// Mirrors shears_wasm::Links: the first few of a list, and how long it is.
-export interface Links {
-  total: number;
-  shown: Link[];
-}
-
-// Mirrors shears_wasm::explore::SearchResults. A count is null if the query
-// isn't a selector for that kind, e.g. recipes for `{ tag = "..." }`.
-export interface SearchResults {
-  item_count: number | null;
-  recipe_count: number | null;
-  links: Links;
-}
-
-// Mirrors shears_wasm::details::WhyStep.
-export type WhyStep =
-  { via: { recipe: Link; output: Link } } | { required: string };
-
-// Mirrors shears_wasm::details::ItemDetail.
-export interface ItemDetail {
-  id: string;
-  fluid: boolean;
-  tags: string[];
-  required: string | null;
-  live: boolean | null;
-  why: WhyStep[];
-  produced_by: Links;
-  used_in: Links;
-}
-
-// Mirrors shears_wasm::details::RecipeDetail.
-export interface RecipeDetail {
-  id: string;
-  file: string | null;
-  recipe_type: string;
-  eu_per_tick: number | null;
-  ticks: number | null;
-  live: boolean | null;
-  inputs: {
-    tag: string | null;
-    count: number;
-    chance: number;
-    members: Links;
-  }[];
-  outputs: {
-    item: Link;
-    count: number;
-    chance: number;
-    edge: "propagate" | "inert" | "dropped" | null;
-    edge_cause: string | null;
-  }[];
 }
 
 export type RequestBody =

@@ -38,6 +38,7 @@ fn js_error(error: &impl ToString) -> JsValue {
 
 /// The results of applying rules.toml to the current graph.
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 struct Analysis {
     /// Items marked required directly by a rule.
     required_count: usize,
@@ -85,6 +86,7 @@ impl Snapshot {
 /// Every list is sorted by id, the way strings are totally ordered in Rust. That's also the
 /// graph's index order.
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, rename = "AnalysisDiff"))]
 struct Diff {
     /// Items that are transitively required now, but weren't before.
     items_added: Vec<String>,
@@ -148,6 +150,7 @@ impl Diff {
 
 /// Whether a [`Link`] goes to an item or a recipe.
 #[derive(Debug, Clone, Copy, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, rename = "LinkKind"))]
 #[serde(rename_all = "snake_case")]
 enum Kind {
     /// An item, or a fluid.
@@ -160,6 +163,7 @@ enum Kind {
 ///
 /// The page will use this to link to.
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 struct Link {
     /// Whether this is an item or a recipe.
     kind: Kind,
@@ -174,6 +178,7 @@ struct Link {
 ///
 /// Mirrored by `Links` in `web/src/session-protocol.ts`.
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 struct Links {
     /// How many there are in total.
     total: usize,

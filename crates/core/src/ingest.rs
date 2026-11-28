@@ -54,6 +54,7 @@ pub struct RawFile {
 
 /// What a [`Diagnostic`] is about.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum About {
     /// A file of the export, e.g. a recipe that didn't parse.
@@ -92,6 +93,7 @@ impl About {
 
 /// A problem noticed while ingesting.
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct Diagnostic {
     /// What this concerns.
     pub about: About,
@@ -101,6 +103,7 @@ pub struct Diagnostic {
 
 /// Summary of what ingest did.
 #[derive(Debug, Default, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct ParseReport {
     /// One diagnostic per problem.
     pub diagnostics: Vec<Diagnostic>,

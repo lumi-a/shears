@@ -15,6 +15,7 @@ use crate::{Analyzed, Kind, Link, Links, Session, js_error};
 
 /// One step of why an item is transitively required.
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 enum WhyStep {
     /// The item before this step is an input of `recipe`, which makes the transitively
@@ -31,6 +32,7 @@ enum WhyStep {
 
 /// Everything about one item.
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 struct ItemDetail {
     /// Its id.
     id: String,
@@ -58,6 +60,7 @@ struct ItemDetail {
 
 /// One input slot of a recipe.
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 struct InputDetail {
     /// The tag this slot was expanded from, if any.
     tag: Option<String>,
@@ -71,6 +74,7 @@ struct InputDetail {
 
 /// One output of a recipe.
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 struct OutputDetail {
     /// The item made.
     item: Link,
@@ -81,6 +85,7 @@ struct OutputDetail {
     /// `"propagate"`, `"inert"` or `"dropped"`.
     ///
     /// `None` before the first analysis.
+    #[cfg_attr(test, ts(type = "\"propagate\" | \"inert\" | \"dropped\" | null"))]
     edge: Option<&'static str>,
     /// Why the edge is in that state.
     ///
@@ -90,6 +95,7 @@ struct OutputDetail {
 
 /// Everything about one recipe.
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 struct RecipeDetail {
     /// Its id.
     id: String,
@@ -98,6 +104,8 @@ struct RecipeDetail {
     /// Its recipe type, e.g. `minecraft:crafting_shaped`.
     recipe_type: String,
     /// EU/t, for recipes that have it.
+    // A JSON number, which ts-rs would type as a bigint.
+    #[cfg_attr(test, ts(type = "number | null"))]
     eu_per_tick: Option<i64>,
     /// Duration in ticks, for recipes that have it.
     ticks: Option<u32>,

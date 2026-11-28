@@ -12,6 +12,7 @@ use crate::{Kind, Link, Links, Session, js_error};
 
 /// What a search found.
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 struct SearchResults {
     /// How many items match. `None` if the query isn't an item selector.
     item_count: Option<usize>,

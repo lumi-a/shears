@@ -39,6 +39,7 @@ zip = { version = "=9.4.1", default-features = false, features = [
 ], optional = true }
 
 [dev-dependencies]
+ts-rs = "12"
 criterion = "0.5"
 proptest = "1"
 sha2 = "0.10"

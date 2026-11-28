@@ -1,3 +1,4 @@
 src/wasm-pkg
 dist
 pnpm-lock.yaml
+src/generated
