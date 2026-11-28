@@ -58,18 +58,6 @@ impl Context {
     }
 }
 
-/// Which selector keys [`parse_clause`] accepts in which [`Context`]s.
-const KEY_CONTEXTS: &[(&str, &[Context])] = &[
-    ("not", &[Context::Item, Context::Recipe, Context::Slot]),
-    ("id", &[Context::Item, Context::Recipe, Context::Slot]),
-    ("mod", &[Context::Item, Context::Recipe, Context::Slot]),
-    ("type", &[Context::Item, Context::Recipe, Context::Slot]),
-    ("tag", &[Context::Item, Context::Slot]),
-    ("has_input", &[Context::Recipe]),
-    ("has_output", &[Context::Recipe]),
-    ("is_catalyst", &[Context::Slot]),
-];
-
 /// An exact id, or a `/regex/`-wrapped pattern.
 #[derive(Debug)]
 pub enum Pattern {
@@ -239,25 +227,23 @@ fn parse_table(table: &toml::Table, context: Context) -> Result<Selector, Select
 }
 
 /// Parses one `key = value` entry of a selector table.
-#[expect(
-    clippy::unreachable,
-    reason = "key was already validated against KEY_CONTEXTS above"
-)]
+///
+/// `not`, `id`, `mod` and `type` apply in every [`Context`]. The other keys check theirs
+/// first.
 fn parse_clause(
     raw_key: &str,
     value: &toml::Value,
     context: Context,
 ) -> Result<Selector, SelectorError> {
-    let (key, allowed_contexts) = KEY_CONTEXTS
-        .iter()
-        .find(|(candidate, _)| *candidate == raw_key)
-        .copied()
-        .ok_or_else(|| SelectorError::UnknownKey(raw_key.to_owned()))?;
-    if !allowed_contexts.contains(&context) {
-        return Err(SelectorError::WrongContext { key, context });
-    }
+    let applies = |key: &'static str, contexts: &[Context]| {
+        if contexts.contains(&context) {
+            Ok(())
+        } else {
+            Err(SelectorError::WrongContext { key, context })
+        }
+    };
 
-    match key {
+    match raw_key {
         "not" => parse(value, context).map(|inner| Selector::Not(Box::new(inner))),
         "id" => string_value(value, "id")
             .and_then(Pattern::parse)
@@ -268,19 +254,25 @@ fn parse_clause(
         "type" => string_value(value, "type")
             .and_then(Pattern::parse)
             .map(Selector::Type),
-        "tag" => string_value(value, "tag")
-            .and_then(Pattern::parse)
-            .map(Selector::Tag),
+        "tag" => {
+            applies("tag", &[Context::Item, Context::Slot])?;
+            string_value(value, "tag")
+                .and_then(Pattern::parse)
+                .map(Selector::Tag)
+        }
         "has_input" => {
+            applies("has_input", &[Context::Recipe])?;
             parse(value, Context::Slot).map(|inner| Selector::Input(Box::new(inner)))
         }
         "has_output" => {
+            applies("has_output", &[Context::Recipe])?;
             parse(value, Context::Slot).map(|inner| Selector::Output(Box::new(inner)))
         }
-        "is_catalyst" => bool_value(value, "is_catalyst").map(Selector::IsCatalyst),
-        _ => unreachable!("key was just looked up in KEY_CONTEXTS"),
-        // TODO: Is there no way to rustily exhaustively check a vector of strings?
-        // e.g. by using a hashmap instead of a vector?
+        "is_catalyst" => {
+            applies("is_catalyst", &[Context::Slot])?;
+            bool_value(value, "is_catalyst").map(Selector::IsCatalyst)
+        }
+        _ => Err(SelectorError::UnknownKey(raw_key.to_owned())),
     }
 }
 
