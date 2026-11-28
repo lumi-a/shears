@@ -646,6 +646,11 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+/* Over .pane-body h3's. */
+.detail-body .detail-title {
+  margin-block: 0 var(--space-2);
+}
+
 .detail-title.item {
   color: var(--item);
 }
@@ -654,8 +659,9 @@ h3 {
   color: var(--recipe);
 }
 
+/* Before the id, on its line. */
 .detail-kind {
-  display: block;
+  margin-right: var(--space-2);
   font-family: var(--font-ui);
   font-size: var(--font-size-small);
   font-weight: normal;
@@ -713,7 +719,7 @@ button.link {
 
 button.link:not(:has(.link-text)) {
   text-decoration: underline 1.5px;
-  text-underline-offset: 0.2em;
+  text-underline-offset: 0.1em;
 }
 
 button.link[aria-current="true"] {
@@ -727,7 +733,7 @@ button.link:hover {
 .link-text {
   text-decoration-line: underline;
   text-decoration-thickness: 1.5px;
-  text-underline-offset: 0.2em;
+  text-underline-offset: 0.1em;
 }
 
 .link-text.item {

@@ -130,10 +130,7 @@ export function ItemDetailView(props: {
 }) {
   return (
     <>
-      <h3 class="detail-title item">
-        <span class="detail-kind">{props.detail.fluid ? "fluid" : "item"}</span>
-        {props.detail.id}
-      </h3>
+      <h3 class="detail-title item">{props.detail.id} </h3>
       <p>
         <Liveness live={props.detail.live} needed="Needed" />
         <Show when={props.detail.required}>
@@ -208,10 +205,7 @@ export function RecipeDetailView(props: {
   const recipeType = () => props.detail.recipe_type;
   return (
     <>
-      <h3 class="detail-title recipe">
-        <span class="detail-kind">recipe</span>
-        {props.detail.id}
-      </h3>
+      <h3 class="detail-title recipe">{props.detail.id}</h3>
       <p>
         <Liveness live={props.detail.live} needed="Useful" />
       </p>
