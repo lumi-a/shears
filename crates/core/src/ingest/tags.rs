@@ -213,3 +213,109 @@ pub(super) fn resolve_all_tags(
 
     (tags, tag_members)
 }
+
+#[cfg(test)]
+mod tests {
+    use core::cell::RefCell;
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use super::{parse_tag_members, resolve_all_tags, tag_id_from_path};
+    use crate::ingest::{About, ItemInterner, ParseReport};
+
+    #[test]
+    fn tag_id_from_path_accepts_both_item_and_fluid_tags() {
+        assert_eq!(
+            tag_id_from_path("tags/minecraft/item/forge/dusts.json"),
+            Some("forge:dusts".to_owned())
+        );
+        assert_eq!(
+            tag_id_from_path("tags/minecraft/fluid/forge/oxygen.json"),
+            Some("forge:oxygen".to_owned())
+        );
+        assert_eq!(tag_id_from_path("recipes/minecraft/stick.json"), None);
+    }
+
+    #[test]
+    fn an_absent_optional_plain_member_is_skipped_without_a_diagnostic() {
+        let raw_tags =
+            BTreeMap::from([("forge:milk".to_owned(), vec!["minecraft:milk?".to_owned()])]);
+        let registered: BTreeSet<&str> = BTreeSet::new();
+        let interner = RefCell::new(ItemInterner::default());
+        let mut report = ParseReport::default();
+
+        let (tags, tag_members) =
+            resolve_all_tags(&raw_tags, &registered, &interner, &mut report);
+
+        assert_eq!(tags, vec!["forge:milk".to_owned()]);
+        assert!(tag_members.first().expect("one tag").is_empty());
+        assert!(
+            report.diagnostics.is_empty(),
+            "an absent optional member shouldn't be reported: {:?}",
+            report.diagnostics
+        );
+    }
+
+    #[test]
+    fn an_absent_required_plain_member_is_still_reported() {
+        let raw_tags = BTreeMap::from([(
+            "forge:dusts".to_owned(),
+            vec!["minecraft:made_up_dust".to_owned()],
+        )]);
+        let registered: BTreeSet<&str> = BTreeSet::new();
+        let interner = RefCell::new(ItemInterner::default());
+        let mut report = ParseReport::default();
+
+        let (_tags, tag_members) =
+            resolve_all_tags(&raw_tags, &registered, &interner, &mut report);
+
+        assert_eq!(report.diagnostics.len(), 1);
+        let diagnostic = report.diagnostics.first().expect("one diagnostic");
+        assert_eq!(
+            diagnostic.about,
+            About::Tag {
+                id: "forge:dusts".to_owned()
+            }
+        );
+        assert!(
+            tag_members.first().expect("one tag").is_empty(),
+            "the unresolved required member is dropped from the tag's members"
+        );
+    }
+
+    #[test]
+    fn an_absent_optional_nested_tag_is_skipped_without_a_diagnostic() {
+        let raw_tags = BTreeMap::from([(
+            "forge:fuel".to_owned(),
+            vec!["#forge:biodiesel?".to_owned()],
+        )]);
+        let registered: BTreeSet<&str> = BTreeSet::new();
+        let interner = RefCell::new(ItemInterner::default());
+        let mut report = ParseReport::default();
+
+        let (_tags, tag_members) =
+            resolve_all_tags(&raw_tags, &registered, &interner, &mut report);
+
+        assert!(tag_members.first().expect("one tag").is_empty());
+        assert!(
+            report.diagnostics.is_empty(),
+            "an absent optional nested tag shouldn't be reported: {:?}",
+            report.diagnostics
+        );
+    }
+
+    #[test]
+    fn tag_members_without_a_namespace_get_minecraft() {
+        let members = parse_tag_members(br##"["dirt", "#logs", "chipped:dirt", "#c:dirts"]"##)
+            .expect("a valid tag file");
+
+        assert_eq!(
+            members,
+            [
+                "minecraft:dirt",
+                "#minecraft:logs",
+                "chipped:dirt",
+                "#c:dirts"
+            ]
+        );
+    }
+}

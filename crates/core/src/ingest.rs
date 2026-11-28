@@ -32,8 +32,6 @@ use self::ingredient::Leaf;
 use self::interner::{ItemInterner, remap_index, remap_item_indices, resolve_referenced};
 use self::recipes::parse_recipes;
 use self::shapes::ShapesError;
-#[cfg(test)]
-use self::tags::{parse_tag_members, tag_id_from_path};
 use self::tags::{read_registries_and_tags, resolve_all_tags};
 use crate::model::{Graph, Item, ItemIndex, ItemKind, Output, Recipe, Slot};
 
@@ -524,14 +522,11 @@ impl PlainResolverParts {
               id_suffix suffixes, these are not format arguments"
 )]
 mod tests {
-    use core::cell::RefCell;
-    use core::iter;
-    use std::collections::{BTreeMap, BTreeSet};
+    use std::collections::BTreeSet;
 
     use super::{
-        About, DEFAULT_SHAPES_TOML, ItemInterner, ParseReport, PlainResolverParts, RawFile,
-        build_items, ingest, parse_tag_members, recipe_id_from_path, recipe_path,
-        resolve_all_tags, resolve_output_id, tag_id_from_path, validate_chance,
+        About, DEFAULT_SHAPES_TOML, ParseReport, PlainResolverParts, RawFile, build_items,
+        ingest, recipe_id_from_path, recipe_path, resolve_output_id, validate_chance,
         with_namespace,
     };
     use crate::model::{ItemIndex, ItemKind};
@@ -562,87 +557,6 @@ mod tests {
     fn genuinely_out_of_range_is_an_error() {
         drop(validate_chance(-0.1).expect_err("-0.5 is far outside [0, 1]"));
         drop(validate_chance(1.1).expect_err("1.5 is far outside [0, 1]"));
-    }
-
-    #[test]
-    fn tag_id_from_path_accepts_both_item_and_fluid_tags() {
-        assert_eq!(
-            tag_id_from_path("tags/minecraft/item/forge/dusts.json"),
-            Some("forge:dusts".to_owned())
-        );
-        assert_eq!(
-            tag_id_from_path("tags/minecraft/fluid/forge/oxygen.json"),
-            Some("forge:oxygen".to_owned())
-        );
-        assert_eq!(tag_id_from_path("recipes/minecraft/stick.json"), None);
-    }
-
-    #[test]
-    fn an_absent_optional_plain_member_is_skipped_without_a_diagnostic() {
-        let raw_tags =
-            BTreeMap::from([("forge:milk".to_owned(), vec!["minecraft:milk?".to_owned()])]);
-        let registered: BTreeSet<&str> = BTreeSet::new();
-        let interner = RefCell::new(ItemInterner::default());
-        let mut report = ParseReport::default();
-
-        let (tags, tag_members) =
-            resolve_all_tags(&raw_tags, &registered, &interner, &mut report);
-
-        assert_eq!(tags, vec!["forge:milk".to_owned()]);
-        assert!(tag_members.first().expect("one tag").is_empty());
-        assert!(
-            report.diagnostics.is_empty(),
-            "an absent optional member shouldn't be reported: {:?}",
-            report.diagnostics
-        );
-    }
-
-    #[test]
-    fn an_absent_required_plain_member_is_still_reported() {
-        let raw_tags = BTreeMap::from([(
-            "forge:dusts".to_owned(),
-            vec!["minecraft:made_up_dust".to_owned()],
-        )]);
-        let registered: BTreeSet<&str> = BTreeSet::new();
-        let interner = RefCell::new(ItemInterner::default());
-        let mut report = ParseReport::default();
-
-        let (_tags, tag_members) =
-            resolve_all_tags(&raw_tags, &registered, &interner, &mut report);
-
-        assert_eq!(report.diagnostics.len(), 1);
-        let diagnostic = report.diagnostics.first().expect("one diagnostic");
-        assert_eq!(
-            diagnostic.about,
-            About::Tag {
-                id: "forge:dusts".to_owned()
-            }
-        );
-        assert!(
-            tag_members.first().expect("one tag").is_empty(),
-            "the unresolved required member is dropped from the tag's members"
-        );
-    }
-
-    #[test]
-    fn an_absent_optional_nested_tag_is_skipped_without_a_diagnostic() {
-        let raw_tags = BTreeMap::from([(
-            "forge:fuel".to_owned(),
-            vec!["#forge:biodiesel?".to_owned()],
-        )]);
-        let registered: BTreeSet<&str> = BTreeSet::new();
-        let interner = RefCell::new(ItemInterner::default());
-        let mut report = ParseReport::default();
-
-        let (_tags, tag_members) =
-            resolve_all_tags(&raw_tags, &registered, &interner, &mut report);
-
-        assert!(tag_members.first().expect("one tag").is_empty());
-        assert!(
-            report.diagnostics.is_empty(),
-            "an absent optional nested tag shouldn't be reported: {:?}",
-            report.diagnostics
-        );
     }
 
     #[test]
@@ -782,44 +696,6 @@ mod tests {
     }
 
     #[test]
-    fn item_interner_assigns_final_indices_in_sorted_order_regardless_of_discovery_order() {
-        let mut interner = ItemInterner::default();
-
-        // Discovered in this order, but "a_first" sorts before "z_last".
-        let z_last_provisional = interner.intern("z_last");
-        let a_first_provisional = interner.intern("a_first");
-        assert_eq!(z_last_provisional, ItemIndex::new(0), "first discovered");
-        assert_eq!(a_first_provisional, ItemIndex::new(1));
-        assert_eq!(
-            interner.intern("z_last"),
-            z_last_provisional,
-            "interning again is stable"
-        );
-
-        let (sorted_keys, remap) = interner.finish(iter::empty());
-
-        assert_eq!(
-            sorted_keys,
-            vec![
-                "minecraft:a_first".to_owned(),
-                "minecraft:z_last".to_owned()
-            ]
-        );
-        // "z_last"'s provisional index was 0.
-        assert_eq!(
-            remap.first().copied(),
-            Some(ItemIndex::new(1)),
-            "z_last sorts second, so index 1"
-        );
-        // "a_first"'s provisional index was 1.
-        assert_eq!(
-            remap.get(1).copied(),
-            Some(ItemIndex::new(0)),
-            "a_first sorts first, so index 0"
-        );
-    }
-
-    #[test]
     fn with_namespace_adds_minecraft_only_where_the_namespace_is_missing() {
         assert_eq!(with_namespace("dirt"), "minecraft:dirt");
         assert_eq!(with_namespace("minecraft:dirt"), "minecraft:dirt");
@@ -832,46 +708,6 @@ mod tests {
         assert_eq!(
             with_namespace("gtceu:programmed_circuit{configuration:1}"),
             "gtceu:programmed_circuit{configuration:1}"
-        );
-    }
-
-    #[test]
-    fn item_interner_treats_an_id_without_a_namespace_as_a_minecraft_id() {
-        let mut interner = ItemInterner::default();
-
-        assert_eq!(interner.intern("dirt"), interner.intern("minecraft:dirt"));
-    }
-
-    #[test]
-    fn tag_members_without_a_namespace_get_minecraft() {
-        let members = parse_tag_members(br##"["dirt", "#logs", "chipped:dirt", "#c:dirts"]"##)
-            .expect("a valid tag file");
-
-        assert_eq!(
-            members,
-            [
-                "minecraft:dirt",
-                "#minecraft:logs",
-                "chipped:dirt",
-                "#c:dirts"
-            ]
-        );
-    }
-
-    #[test]
-    fn item_interner_finish_includes_a_registered_but_unreferenced_id() {
-        let mut interner = ItemInterner::default();
-        let _provisional = interner.intern("minecraft:referenced");
-
-        let (sorted_keys, _remap) =
-            interner.finish(iter::once("minecraft:unreferenced".to_owned()));
-
-        assert_eq!(
-            sorted_keys,
-            vec![
-                "minecraft:referenced".to_owned(),
-                "minecraft:unreferenced".to_owned(),
-            ]
         );
     }
 

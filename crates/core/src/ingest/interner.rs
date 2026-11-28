@@ -150,3 +150,73 @@ pub(super) fn resolve_referenced(
     }
     referenced
 }
+
+#[cfg(test)]
+mod tests {
+    use core::iter;
+
+    use super::ItemInterner;
+    use crate::model::ItemIndex;
+
+    #[test]
+    fn item_interner_assigns_final_indices_in_sorted_order_regardless_of_discovery_order() {
+        let mut interner = ItemInterner::default();
+
+        // Discovered in this order, but "a_first" sorts before "z_last".
+        let z_last_provisional = interner.intern("z_last");
+        let a_first_provisional = interner.intern("a_first");
+        assert_eq!(z_last_provisional, ItemIndex::new(0), "first discovered");
+        assert_eq!(a_first_provisional, ItemIndex::new(1));
+        assert_eq!(
+            interner.intern("z_last"),
+            z_last_provisional,
+            "interning again is stable"
+        );
+
+        let (sorted_keys, remap) = interner.finish(iter::empty());
+
+        assert_eq!(
+            sorted_keys,
+            vec![
+                "minecraft:a_first".to_owned(),
+                "minecraft:z_last".to_owned()
+            ]
+        );
+        // "z_last"'s provisional index was 0.
+        assert_eq!(
+            remap.first().copied(),
+            Some(ItemIndex::new(1)),
+            "z_last sorts second, so index 1"
+        );
+        // "a_first"'s provisional index was 1.
+        assert_eq!(
+            remap.get(1).copied(),
+            Some(ItemIndex::new(0)),
+            "a_first sorts first, so index 0"
+        );
+    }
+
+    #[test]
+    fn item_interner_treats_an_id_without_a_namespace_as_a_minecraft_id() {
+        let mut interner = ItemInterner::default();
+
+        assert_eq!(interner.intern("dirt"), interner.intern("minecraft:dirt"));
+    }
+
+    #[test]
+    fn item_interner_finish_includes_a_registered_but_unreferenced_id() {
+        let mut interner = ItemInterner::default();
+        let _provisional = interner.intern("minecraft:referenced");
+
+        let (sorted_keys, _remap) =
+            interner.finish(iter::once("minecraft:unreferenced".to_owned()));
+
+        assert_eq!(
+            sorted_keys,
+            vec![
+                "minecraft:referenced".to_owned(),
+                "minecraft:unreferenced".to_owned(),
+            ]
+        );
+    }
+}
