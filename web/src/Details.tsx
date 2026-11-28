@@ -59,16 +59,11 @@ export function TagText(props: { id: string }) {
 const percent = (chance: number) => `${Math.round(chance * 1000) / 10}%`;
 
 // Whether the latest analysis found it needed, in words.
-function Liveness(props: { live: boolean | null; needed: string }) {
+function Liveness(props: { live: boolean; needed: string }) {
   return (
-    <Show
-      when={props.live !== null}
-      fallback={<span class="hint">Not analyzed yet.</span>}
-    >
-      <span classList={{ dead: props.live === false }}>
-        {props.live ? props.needed : `Not ${props.needed.toLowerCase()}`}
-      </span>
-    </Show>
+    <span classList={{ dead: !props.live }}>
+      {props.live ? props.needed : `Not ${props.needed.toLowerCase()}`}
+    </span>
   );
 }
 
@@ -130,13 +125,15 @@ export function ItemDetailView(props: {
 }) {
   return (
     <>
-      <h3 class="detail-title item">{props.detail.id} </h3>
-      <p>
-        <Liveness live={props.detail.live} needed="Needed" />
-        <Show when={props.detail.required}>
-          {(cause) => <>, required directly by {cause()}</>}
-        </Show>
-      </p>
+      <h3 class="detail-title item">{props.detail.id}</h3>
+      <Show when={props.detail.live !== null}>
+        <p>
+          <Liveness live={props.detail.live === true} needed="Needed" />
+          <Show when={props.detail.required}>
+            {(cause) => <>, required directly by {cause()}</>}
+          </Show>
+        </p>
+      </Show>
 
       <Show when={props.detail.why.length > 0}>
         <h4>Why it's needed</h4>
@@ -206,9 +203,11 @@ export function RecipeDetailView(props: {
   return (
     <>
       <h3 class="detail-title recipe">{props.detail.id}</h3>
-      <p>
-        <Liveness live={props.detail.live} needed="Useful" />
-      </p>
+      <Show when={props.detail.live !== null}>
+        <p>
+          <Liveness live={props.detail.live === true} needed="Useful" />
+        </p>
+      </Show>
       <p>
         <button
           type="button"
