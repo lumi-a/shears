@@ -1,4 +1,4 @@
-import { For, Show, type JSX } from "solid-js";
+import { For, Show, type JSX, type ParentProps } from "solid-js";
 import type { ItemDetail, Link, Links, RecipeDetail } from "./session";
 
 // What the Explorer shows details of.
@@ -101,6 +101,22 @@ function LinkItems(props: { links: Links; navigation: Navigation }) {
   );
 }
 
+// A part of the details that can be collapsed, open to begin with. `count` is
+// how many entries it has, if that's worth showing.
+function Section(props: ParentProps<{ title: string; count?: number }>) {
+  return (
+    <details class="detail-section" open>
+      <summary>
+        <span class="label">{props.title}</span>
+        <Show when={props.count !== undefined}>
+          <span class="count">{props.count?.toLocaleString()}</span>
+        </Show>
+      </summary>
+      {props.children}
+    </details>
+  );
+}
+
 // A capped list of links, with how many there are in its heading.
 function LinkList(props: {
   title: string;
@@ -108,14 +124,11 @@ function LinkList(props: {
   navigation: Navigation;
 }) {
   return (
-    <>
-      <h4>
-        {props.title} ({props.links.total.toLocaleString()})
-      </h4>
+    <Section title={props.title} count={props.links.total}>
       <ul class="links">
         <LinkItems links={props.links} navigation={props.navigation} />
       </ul>
-    </>
+    </Section>
   );
 }
 
@@ -136,49 +149,53 @@ export function ItemDetailView(props: {
       </Show>
 
       <Show when={props.detail.why.length > 0}>
-        <h4>Why it's needed</h4>
-        <ol class="why">
-          <For each={props.detail.why}>
-            {(step): JSX.Element =>
-              "via" in step ? (
-                <li>
-                  input of{" "}
-                  <LinkButton
-                    link={step.via.recipe}
-                    navigation={props.navigation}
-                  />
-                  , which makes{" "}
-                  <LinkButton
-                    link={step.via.output}
-                    navigation={props.navigation}
-                  />
-                </li>
-              ) : (
-                <li>required by {step.required}</li>
-              )
-            }
-          </For>
-        </ol>
+        <Section title="Why it's needed">
+          <ol class="why">
+            <For each={props.detail.why}>
+              {(step): JSX.Element =>
+                "via" in step ? (
+                  <li>
+                    input of{" "}
+                    <LinkButton
+                      link={step.via.recipe}
+                      navigation={props.navigation}
+                    />
+                    , which makes{" "}
+                    <LinkButton
+                      link={step.via.output}
+                      navigation={props.navigation}
+                    />
+                  </li>
+                ) : (
+                  <li>required by {step.required}</li>
+                )
+              }
+            </For>
+          </ol>
+        </Section>
       </Show>
 
       <Show when={props.detail.tags.length > 0}>
-        <h4>Tags ({props.detail.tags.length})</h4>
-        <ul class="links">
-          <For each={props.detail.tags}>
-            {(tag) => (
-              <li>
-                <button
-                  type="button"
-                  class="link"
-                  title="Search for items with this tag"
-                  onClick={() => props.navigation.search(`{ tag = "${tag}" }`)}
-                >
-                  <TagText id={tag} />
-                </button>
-              </li>
-            )}
-          </For>
-        </ul>
+        <Section title="Tags" count={props.detail.tags.length}>
+          <ul class="links">
+            <For each={props.detail.tags}>
+              {(tag) => (
+                <li>
+                  <button
+                    type="button"
+                    class="link"
+                    title="Search for items with this tag"
+                    onClick={() =>
+                      props.navigation.search(`{ tag = "${tag}" }`)
+                    }
+                  >
+                    <TagText id={tag} />
+                  </button>
+                </li>
+              )}
+            </For>
+          </ul>
+        </Section>
       </Show>
 
       <LinkList
@@ -242,50 +259,57 @@ export function RecipeDetailView(props: {
         </Show>
       </p>
 
-      <h4>Inputs ({props.detail.inputs.length})</h4>
-      <ul class="slots">
-        <For each={props.detail.inputs}>
-          {(slot) => (
-            <li>
-              {slot.count.toLocaleString()}×
-              <Show when={slot.tag}>{(tag) => <> #{tag()}</>}</Show>
-              <Show when={slot.chance === 0}>
-                <span class="hint"> (catalyst, not consumed)</span>
-              </Show>
-              <Show when={slot.chance > 0 && slot.chance < 1}>
-                <span class="hint">
-                  {" "}
-                  ({percent(slot.chance)} chance to be consumed)
-                </span>
-              </Show>
-              <ul class="links">
-                <LinkItems links={slot.members} navigation={props.navigation} />
-              </ul>
-            </li>
-          )}
-        </For>
-      </ul>
+      <Section title="Inputs" count={props.detail.inputs.length}>
+        <ul class="slots">
+          <For each={props.detail.inputs}>
+            {(slot) => (
+              <li>
+                {slot.count.toLocaleString()}×
+                <Show when={slot.tag}>{(tag) => <> #{tag()}</>}</Show>
+                <Show when={slot.chance === 0}>
+                  <span class="hint"> (catalyst, not consumed)</span>
+                </Show>
+                <Show when={slot.chance > 0 && slot.chance < 1}>
+                  <span class="hint">
+                    {" "}
+                    ({percent(slot.chance)} chance to be consumed)
+                  </span>
+                </Show>
+                <ul class="links">
+                  <LinkItems
+                    links={slot.members}
+                    navigation={props.navigation}
+                  />
+                </ul>
+              </li>
+            )}
+          </For>
+        </ul>
+      </Section>
 
-      <h4>Outputs ({props.detail.outputs.length})</h4>
-      <ul class="slots">
-        <For each={props.detail.outputs}>
-          {(output) => (
-            <li>
-              {output.count.toLocaleString()}×{" "}
-              <LinkButton link={output.item} navigation={props.navigation} />
-              <Show when={output.chance < 1}>
-                <span class="hint"> ({percent(output.chance)} chance)</span>
-              </Show>
-              <Show when={output.edge !== null && output.edge !== "propagate"}>
-                <span class="hint">
-                  {" "}
-                  {output.edge}, by {output.edge_cause}
-                </span>
-              </Show>
-            </li>
-          )}
-        </For>
-      </ul>
+      <Section title="Outputs" count={props.detail.outputs.length}>
+        <ul class="slots">
+          <For each={props.detail.outputs}>
+            {(output) => (
+              <li>
+                {output.count.toLocaleString()}×{" "}
+                <LinkButton link={output.item} navigation={props.navigation} />
+                <Show when={output.chance < 1}>
+                  <span class="hint"> ({percent(output.chance)} chance)</span>
+                </Show>
+                <Show
+                  when={output.edge !== null && output.edge !== "propagate"}
+                >
+                  <span class="hint">
+                    {" "}
+                    {output.edge}, by {output.edge_cause}
+                  </span>
+                </Show>
+              </li>
+            )}
+          </For>
+        </ul>
+      </Section>
     </>
   );
 }

@@ -372,7 +372,8 @@ h3 {
   border-bottom: 1px solid var(--border);
 }
 
-.report summary {
+.report summary,
+.detail-section > summary {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
@@ -383,11 +384,13 @@ h3 {
   list-style: none;
 }
 
-.report summary::-webkit-details-marker {
+.report summary::-webkit-details-marker,
+.detail-section > summary::-webkit-details-marker {
   display: none;
 }
 
-.report summary::before {
+.report summary::before,
+.detail-section > summary::before {
   flex: none;
   width: 0.4em;
   height: 0.4em;
@@ -397,20 +400,24 @@ h3 {
   transform: translateY(-0.15em) rotate(-45deg);
 }
 
-.report details[open] > summary::before {
+.report details[open] > summary::before,
+.detail-section[open] > summary::before {
   transform: translateY(-0.3em) rotate(45deg);
 }
 
-.report summary:hover {
+.report summary:hover,
+.detail-section > summary:hover {
   background: var(--bg-subtle);
 }
 
-.report summary .count {
+.report summary .count,
+.detail-section > summary .count {
   flex: none;
   color: var(--fg-muted);
 }
 
-.report summary .label {
+.report summary .label,
+.detail-section > summary .label {
   min-width: 0;
 }
 
@@ -668,10 +675,13 @@ h3 {
   color: var(--fg-muted);
 }
 
-.detail-body h4 {
-  margin-block: var(--space-4) var(--space-1);
-  font-size: var(--font-size);
+.detail-section > summary {
+  margin-top: var(--space-3);
   font-weight: 600;
+}
+
+.detail-section > summary .count {
+  font-weight: normal;
 }
 
 .detail-body p {
