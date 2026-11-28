@@ -284,14 +284,8 @@ export function RecipeDetailView(props: {
                     )}
                   </Show>
                   <Show when={slot.tag}>{(tag) => <> #{tag()}</>}</Show>
-                  <Show when={slot.chance === 0}>
-                    <span class="hint"> (catalyst, not consumed)</span>
-                  </Show>
-                  <Show when={slot.chance > 0 && slot.chance < 1}>
-                    <span class="hint">
-                      {" "}
-                      ({percent(slot.chance)} chance to be consumed)
-                    </span>
+                  <Show when={slot.chance >= 0 && slot.chance < 1}>
+                    <span class="hint"> ({percent(slot.chance)})</span>
                   </Show>
                   <Show when={single() === undefined}>
                     <ul class="links">
@@ -316,7 +310,7 @@ export function RecipeDetailView(props: {
                 {output.count.toLocaleString()}×{" "}
                 <LinkButton link={output.item} navigation={props.navigation} />
                 <Show when={output.chance < 1}>
-                  <span class="hint"> ({percent(output.chance)} chance)</span>
+                  <span class="hint"> ({percent(output.chance)})</span>
                 </Show>
                 <Show
                   when={output.edge !== null && output.edge !== "propagate"}
