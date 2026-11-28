@@ -88,22 +88,13 @@ impl TextQuery {
 
     /// The positions in `ids` that match with the relevant score. Unsorted.
     ///
-    /// Without `:` in the text, only the part of each id after `:` is matched, so that
-    /// e.g. `iron` ranks `minecraft:iron_ingot` above `ironfurnaces:copper_furnace`.
+    /// The whole id is matched, so a word can also pick a mod, e.g. `gtceu iron dust`.
+    ///
+    /// Thus, a mod whose name contains the word can crowd out the rest, e.g. `ironjetpacks:*`
+    /// for `iron`. In this case, use frizbee's `!` to exclude: `iron !^iron`.
     fn matches(&self, ids: &[&str]) -> Vec<(u16, usize)> {
-        let whole_ids = self.text.contains(':');
-        let keys: Vec<&str> = ids
-            .iter()
-            .map(|&id| {
-                if whole_ids {
-                    id
-                } else {
-                    id.split_once(':').map_or(id, |(_, path)| path)
-                }
-            })
-            .collect();
         frizbee::Matcher::from_query(&self.text, &frizbee::Config::default())
-            .match_list(&keys)
+            .match_list(ids)
             .into_iter()
             .filter_map(|found| Some((found.score, usize::try_from(found.index).ok()?)))
             .collect()
@@ -357,7 +348,7 @@ mod tests {
     }
 
     #[test]
-    fn text_matches_the_path_unless_it_has_a_colon() {
+    fn text_matches_whole_ids_and_frizbee_syntax() {
         let ids = ["minecraft:iron_ingot", "ironfurnaces:copper_furnace"];
         let positions = |query: &str| {
             let mut found: Vec<usize> = TextQuery::parse(query)
@@ -370,7 +361,8 @@ mod tests {
             found
         };
 
-        assert_eq!(positions("iron"), [0]);
+        assert_eq!(positions("iron"), [0, 1]);
+        assert_eq!(positions("iron !^iron"), [0]);
         assert_eq!(positions("ironfurnaces:"), [1]);
     }
 }
