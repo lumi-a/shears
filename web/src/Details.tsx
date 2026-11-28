@@ -262,27 +262,48 @@ export function RecipeDetailView(props: {
       <Section title="Inputs" count={props.detail.inputs.length}>
         <ul class="slots">
           <For each={props.detail.inputs}>
-            {(slot) => (
-              <li>
-                {slot.count.toLocaleString()}×
-                <Show when={slot.tag}>{(tag) => <> #{tag()}</>}</Show>
-                <Show when={slot.chance === 0}>
-                  <span class="hint"> (catalyst, not consumed)</span>
-                </Show>
-                <Show when={slot.chance > 0 && slot.chance < 1}>
-                  <span class="hint">
-                    {" "}
-                    ({percent(slot.chance)} chance to be consumed)
-                  </span>
-                </Show>
-                <ul class="links">
-                  <LinkItems
-                    links={slot.members}
-                    navigation={props.navigation}
-                  />
-                </ul>
-              </li>
-            )}
+            {(slot) => {
+              // The only item that fits, if there's no tag either. That one
+              // goes on the slot's own line, like an output.
+              const single = () =>
+                slot.tag === null && slot.members.total === 1
+                  ? slot.members.shown[0]
+                  : undefined;
+              return (
+                <li>
+                  {slot.count.toLocaleString()}×
+                  <Show when={single()}>
+                    {(link) => (
+                      <>
+                        {" "}
+                        <LinkButton
+                          link={link()}
+                          navigation={props.navigation}
+                        />
+                      </>
+                    )}
+                  </Show>
+                  <Show when={slot.tag}>{(tag) => <> #{tag()}</>}</Show>
+                  <Show when={slot.chance === 0}>
+                    <span class="hint"> (catalyst, not consumed)</span>
+                  </Show>
+                  <Show when={slot.chance > 0 && slot.chance < 1}>
+                    <span class="hint">
+                      {" "}
+                      ({percent(slot.chance)} chance to be consumed)
+                    </span>
+                  </Show>
+                  <Show when={single() === undefined}>
+                    <ul class="links">
+                      <LinkItems
+                        links={slot.members}
+                        navigation={props.navigation}
+                      />
+                    </ul>
+                  </Show>
+                </li>
+              );
+            }}
           </For>
         </ul>
       </Section>
