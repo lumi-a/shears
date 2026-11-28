@@ -28,6 +28,7 @@ Eliminate unneeded recipes in KubeJS Minecraft Modpacks.
 - Generate web/src/session-protocol.ts's types from the Rust structs the
   wasm crate serializes (e.g. with ts-rs, or tsify alongside wasm-bindgen),
   instead of mirroring them by hand.
+- Measure browser tab memory usage
 
 ## License
 
