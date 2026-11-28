@@ -4,6 +4,7 @@ use shears_core::rules::selector::{self, Context, Selector};
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
+use itertools::Itertools as _;
 use serde::Serialize;
 use shears_core::model::{ItemIndex, RecipeIndex};
 
@@ -129,7 +130,7 @@ struct Hit<'graph> {
 impl Session {
     /// Finds the items and recipes matching `query`, as JSON mirrored by `SearchResults` in
     /// `web/src/session-protocol.ts`. Lists only the kinds asked for, at most `limit` of
-    /// them. Items first.
+    /// them. A selector's are sorted by id, items and recipes mixed.
     ///
     /// A query is one of the following:
     /// - `/regex/` for ids
@@ -194,22 +195,29 @@ impl Session {
             .as_deref()
             .filter(|_| recipes)
             .unwrap_or_default();
-        let item_links = shown_items.iter().map(|&item| Link {
+        let item_link = |item: ItemIndex| Link {
             kind: Kind::Item,
             id: graph.item(item).id().to_owned(),
             live: liveness.map(|live| live.is_transitively_required(item)),
-        });
-        let recipe_links = shown_recipes.iter().map(|&recipe| Link {
+        };
+        let recipe_link = |recipe: RecipeIndex| Link {
             kind: Kind::Recipe,
             id: graph.recipe(recipe).id().to_owned(),
             live: liveness.map(|live| live.is_recipe_transitively_required(recipe)),
-        });
+        };
+        // Both are in index order, so sorted by id already. Merging them keeps it that way,
+        // with an item before a recipe of the same id.
+        // This is done lazily, so only the links shown are made.
+        let merged = shown_items.iter().copied().map(item_link).merge_by(
+            shown_recipes.iter().copied().map(recipe_link),
+            |item, recipe| item.id <= recipe.id,
+        );
         let result = SearchResults {
             item_count: item_matches.as_ref().map(Vec::len),
             recipe_count: recipe_matches.as_ref().map(Vec::len),
             links: Links {
                 total: shown_items.len() + shown_recipes.len(),
-                shown: item_links.chain(recipe_links).take(limit).collect(),
+                shown: merged.take(limit).collect(),
             },
         };
         serde_json::to_string(&result).map_err(|error| js_error(&error))
