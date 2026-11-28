@@ -302,6 +302,21 @@ impl Session {
         self.graph.recipes().len()
     }
 
+    /// The text of the export's file at `path`, e.g. a recipe's JSON.
+    ///
+    /// Bytes that aren't UTF-8 show up as U+FFFD.
+    ///
+    /// # Errors
+    ///
+    /// If the export has no file at `path`.
+    pub fn file_text(&self, path: &str) -> Result<String, JsValue> {
+        self.files
+            .iter()
+            .find(|file| file.path == path)
+            .map(|file| String::from_utf8_lossy(&file.bytes).into_owned())
+            .ok_or_else(|| js_error(&format!("no file {path:?} in the export")))
+    }
+
     /// The parse report as JSON (mirrored by `ParseReport` in `web/src/session.ts`).
     ///
     /// # Errors

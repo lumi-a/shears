@@ -69,6 +69,7 @@ function AboutLink(props: {
   about: About;
   open: (target: Target) => void;
   search: (query: string) => void;
+  showFile: (path: string) => void;
 }) {
   const of = <K extends About["kind"]>(kind: K) =>
     props.about.kind === kind
@@ -92,7 +93,16 @@ function AboutLink(props: {
         )}
       </Match>
       <Match when={of("file")}>
-        {(file) => <span class="file">{file().path}</span>}
+        {(file) => (
+          <button
+            type="button"
+            class="link"
+            title="Show this file"
+            onClick={() => props.showFile(file().path)}
+          >
+            <span class="file">{file().path}</span>
+          </button>
+        )}
       </Match>
     </Switch>
   );
@@ -129,6 +139,8 @@ export function ParseReportView(props: {
   open: (target: Target) => void;
   // Searches for `query` in the Explorer.
   search: (query: string) => void;
+  // Shows the export's file at `path`.
+  showFile: (path: string) => void;
 }) {
   const groups = createMemo(() => groupByMessage(props.report.diagnostics));
   const recipeTypes = createMemo(() =>
@@ -158,6 +170,7 @@ export function ParseReportView(props: {
                   about={diagnostic.about}
                   open={props.open}
                   search={props.search}
+                  showFile={props.showFile}
                 />
               )}
             </CappedList>

@@ -6,6 +6,7 @@ use serde::Serialize;
 use shears_core::analysis::edges::EdgeState;
 use shears_core::analysis::explain::cause_text;
 use shears_core::analysis::transitively_required::Why;
+use shears_core::ingest;
 use shears_core::model::{Graph, ItemIndex, ItemKind, RecipeIndex};
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -92,6 +93,8 @@ struct OutputDetail {
 struct RecipeDetail {
     /// Its id.
     id: String,
+    /// The path of the file it was read from, for [`Session::file_text`].
+    file: Option<String>,
     /// Its recipe type, e.g. `minecraft:crafting_shaped`.
     recipe_type: String,
     /// EU/t, for recipes that have it.
@@ -279,6 +282,7 @@ impl Session {
         };
         let detail = RecipeDetail {
             id: data.id().to_owned(),
+            file: ingest::recipe_path(data.id()),
             recipe_type: name_of(data.rtype(), self.graph.recipe_types()).unwrap_or_default(),
             eu_per_tick: data.eu_t(),
             ticks: data.ticks(),

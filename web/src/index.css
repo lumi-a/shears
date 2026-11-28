@@ -302,6 +302,61 @@ h3 {
   margin-block: var(--space-4) var(--space-2);
 }
 
+/****************************************************************
+   File popover, e.g. a recipe's JSON.
+*****************************************************************/
+
+.file-popover {
+  margin: auto; /* centering */
+  width: min(48rem, calc(100vw - 2 * var(--space-4)));
+  max-height: calc(100vh - 2 * var(--space-4));
+  padding: 0;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.file-popover:popover-open {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.file-popover::backdrop {
+  background: rgb(0 0 0 / 0.333);
+}
+
+.file-popover-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-subtle);
+}
+
+.file-popover-header .file {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.file-popover pre,
+.file-popover p {
+  margin: 0;
+  padding: var(--space-3);
+  overflow: auto;
+}
+
+.file-popover pre {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+}
+
+.file {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+}
+
 .presets {
   display: flex;
   flex-wrap: wrap;

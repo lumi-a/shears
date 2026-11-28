@@ -485,6 +485,18 @@ fn recipe_id_from_path(path: &str) -> Option<String> {
     Some(format!("{namespace}:{name}"))
 }
 
+/// The path of the file that defines the recipe `id`.
+///
+/// For instance, maps `minecraft:acacia_planks` to `recipes/minecraft/acacia_planks.json`.
+///
+/// `None` for an id without a namespace, which no recipe should have?
+#[inline]
+#[must_use]
+pub fn recipe_path(id: &str) -> Option<String> {
+    let (namespace, name) = id.split_once(':')?;
+    Some(format!("recipes/{namespace}/{name}.json"))
+}
+
 /// Builds the final `Item` list, in `sorted_keys`' order.
 ///
 /// Classifies each key by checking `item_keys`/`fluid_keys`.
@@ -948,10 +960,20 @@ mod tests {
 
     use super::{
         About, DEFAULT_SHAPES_TOML, ItemInterner, ParseReport, PlainResolverParts, RawFile,
-        build_items, ingest, parse_tag_members, resolve_all_tags, resolve_output_id,
-        tag_id_from_path, validate_chance, with_namespace,
+        build_items, ingest, parse_tag_members, recipe_id_from_path, recipe_path,
+        resolve_all_tags, resolve_output_id, tag_id_from_path, validate_chance,
+        with_namespace,
     };
     use crate::model::{ItemIndex, ItemKind};
+
+    #[test]
+    fn recipe_path_is_the_reverse_of_recipe_id_from_path() {
+        let path = "recipes/gtceu/extruder/extrude_iron_to_rod.json";
+        let id = recipe_id_from_path(path).expect("a recipe path");
+
+        assert_eq!(id, "gtceu:extruder/extrude_iron_to_rod");
+        assert_eq!(recipe_path(&id).as_deref(), Some(path));
+    }
 
     #[test]
     fn values_inside_the_range_pass_through_unchanged() {

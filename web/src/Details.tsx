@@ -12,6 +12,8 @@ export interface Navigation {
   search: (query: string) => void;
   // Shows every list of the current details in full, up to `total` entries.
   showAll: (total: number) => void;
+  // Shows the export's file at `path`.
+  showFile: (path: string) => void;
 }
 
 // The last entry of a list that's been cut off.
@@ -229,6 +231,21 @@ export function RecipeDetailView(props: {
         </Show>
         <Show when={props.detail.ticks}>
           {(ticks) => <>, {(ticks() / 20).toLocaleString()} s</>}
+        </Show>
+        <Show when={props.detail.file}>
+          {(file) => (
+            <>
+              {" · "}
+              <button
+                type="button"
+                class="link"
+                title={`Show ${file()}`}
+                onClick={() => props.navigation.showFile(file())}
+              >
+                JSON
+              </button>
+            </>
+          )}
         </Show>
       </p>
 

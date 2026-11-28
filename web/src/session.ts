@@ -106,6 +106,11 @@ export class SessionClient {
     return this.#send({ kind: "recipe", id, limit });
   }
 
+  // The text of the export's file at `path`, e.g. a recipe's JSON.
+  fileText(path: string): Promise<string> {
+    return this.#send({ kind: "file", path });
+  }
+
   // The worker answers a request of kind K with Results[K]. TypeScript can't
   // see that across postMessage, hence the cast.
   #send<K extends Kind>(

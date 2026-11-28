@@ -92,6 +92,7 @@ export interface ItemDetail {
 // Mirrors shears_wasm::details::RecipeDetail.
 export interface RecipeDetail {
   id: string;
+  file: string | null;
   recipe_type: string;
   eu_per_tick: number | null;
   ticks: number | null;
@@ -123,7 +124,8 @@ export type RequestBody =
       limit: number;
     }
   | { kind: "item"; id: string; limit: number }
-  | { kind: "recipe"; id: string; limit: number };
+  | { kind: "recipe"; id: string; limit: number }
+  | { kind: "file"; path: string };
 
 export type Kind = RequestBody["kind"];
 
@@ -135,6 +137,7 @@ export interface Results {
   search: SearchResults;
   item: ItemDetail;
   recipe: RecipeDetail;
+  file: string;
 }
 
 // `seq` pairs a response with its request. (Not `id`: that would clash with an item's.)

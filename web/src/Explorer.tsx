@@ -80,6 +80,8 @@ const errorOf = <T,>(outcome: Outcome<T> | undefined) =>
 // like a rule's filter, an id /regex/, or plain text matched fuzzily.
 export function Explorer(props: {
   session: SessionClient;
+  // Shows the export's file at `path`.
+  showFile: (path: string) => void;
   // Changes whenever the graph or the analysis did.
   revision: unknown;
   // Something to open or search for from outside, e.g. an id clicked in the
@@ -106,6 +108,7 @@ export function Explorer(props: {
     },
     search: setQuery,
     showAll: raiseDetailLimit,
+    showFile: (path) => props.showFile(path),
   };
 
   createEffect(() => {

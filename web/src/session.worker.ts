@@ -72,6 +72,8 @@ function handle(request: Request): Results[Kind] {
       return JSON.parse(
         current().recipe_json(request.id, request.limit),
       ) as RecipeDetail;
+    case "file":
+      return current().file_text(request.path);
   }
 }
 

@@ -2,6 +2,7 @@ import { createSignal, For, onMount, Show } from "solid-js";
 import { AnalysisView, type AnalysisResult } from "./AnalysisView";
 import type { Target } from "./Details";
 import { Explorer, type ExplorerRequest } from "./Explorer";
+import { createFilePopover } from "./FilePopover";
 import { ParseReportView } from "./ParseReportView";
 import { RulesPane } from "./RulesPane";
 import {
@@ -36,6 +37,7 @@ function App() {
     return latest !== undefined && rulesToml() !== latest.rulesToml;
   };
   let openExport!: HTMLDivElement;
+  const filePopover = createFilePopover(session);
 
   // Nothing to show until an export is open. We offer one instead.
   onMount(() => openExport.showPopover());
@@ -153,6 +155,7 @@ function App() {
             report={current().report}
             open={openInExplorer}
             search={searchInExplorer}
+            showFile={filePopover.show}
           />
         </div>
       )}
@@ -171,6 +174,7 @@ function App() {
     >
       <Explorer
         session={session}
+        showFile={filePopover.show}
         revision={[info(), analysis()]}
         request={explorerRequest()}
       />
@@ -198,6 +202,8 @@ function App() {
           </Show>
         </p>
       </header>
+
+      {filePopover.view}
 
       <div
         id="open-export"
