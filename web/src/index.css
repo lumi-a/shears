@@ -9,8 +9,9 @@
   --border: light-dark(oklch(88% 0 0), oklch(35% 0 0));
   --accent: light-dark(oklch(50% 0.2 265), oklch(72% 0.15 265));
   --error: light-dark(oklch(50% 0.2 25), oklch(72% 0.15 25));
-  --item: light-dark(oklch(50% 0.3 200), oklch(78% 0.15 200));
-  --recipe: light-dark(oklch(50% 0.3 140), oklch(78% 0.15 140));
+  --item: light-dark(oklch(50% 0.2 190), oklch(80% 0.1 180));
+  --recipe: light-dark(oklch(50% 0.2 70), oklch(80% 0.1 70));
+  --tag: light-dark(oklch(50% 0.2 320), oklch(80% 0.1 320));
 
   /* TOML editor */
   --editor-active-line: light-dark(oklch(0% 0 0 / 3%), oklch(100% 0 0 / 2%));
@@ -558,7 +559,7 @@ h3 {
 .explorer-results,
 .detail-body {
   overflow: auto;
-  padding: 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
 }
 
 .explorer-detail {
@@ -654,25 +655,43 @@ button.link {
   text-align: left;
 }
 
-button.link:hover:not(:disabled) {
+button.link:hover:not(:disabled):not(:has(.link-text)) {
   background: none;
   text-decoration: underline;
 }
 
 button.link[aria-current="true"] {
+  background: var(--bg-subtle);
+  font-weight: bold;
+}
+button.link:hover {
   background: var(--bg-hover);
+}
+
+.link-text {
+  text-decoration-line: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.2em;
 }
 
 .link-text.item {
   color: var(--item);
+  text-decoration-style: dotted;
 }
 
 .link-text.recipe {
   color: var(--recipe);
+  text-decoration-style: dashed;
 }
 
-/* Not needed by the latest analysis, i.e. what would get hidden. */
+.link-text.tag {
+  color: var(--tag);
+  text-decoration-style: wavy;
+}
+
+/* Not needed by the latest analysis, i.e. what would get hidden. Around a
+   .link-text, so the line-through stays solid instead of taking its style. */
 .dead {
-  opacity: 0.6;
+  opacity: 0.5;
   text-decoration: line-through;
 }

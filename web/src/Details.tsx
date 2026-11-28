@@ -29,12 +29,11 @@ export function ShowAll(props: { hidden: number; onClick: () => void }) {
   );
 }
 
-// An item or recipe id, also coloured by which of the two it is.
+// An item or recipe id, coloured and underlined by which of the two it is.
 // This is struck through if the latest analysis found it not needed.
 export function LinkText(props: { link: Link }) {
   return (
     <span
-      class={`link-text ${props.link.kind}`}
       classList={{ dead: props.link.live === false }}
       title={
         props.link.kind +
@@ -45,9 +44,14 @@ export function LinkText(props: { link: Link }) {
             : ", not needed")
       }
     >
-      {props.link.id}
+      <span class={`link-text ${props.link.kind}`}>{props.link.id}</span>
     </span>
   );
+}
+
+// A tag id, marked like LinkText's ids but with a leading #.
+export function TagText(props: { id: string }) {
+  return <span class="link-text tag">#{props.id}</span>;
 }
 
 const percent = (chance: number) => `${Math.round(chance * 1000) / 10}%`;
@@ -173,7 +177,7 @@ export function ItemDetailView(props: {
                   title="Search for items with this tag"
                   onClick={() => props.navigation.search(`{ tag = "${tag}" }`)}
                 >
-                  {tag}
+                  <TagText id={tag} />
                 </button>
               </li>
             )}

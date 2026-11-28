@@ -57,9 +57,9 @@ const theme = EditorView.theme({
   // A rule's lines get a border in its kind's colour, and its header the
   // colour itself. The header's spans come from the TOML highlighting, so
   // they're coloured directly.
-  ".cm-rule": { borderLeft: "2px solid transparent" },
-  ".cm-rule.item": { borderLeftColor: "var(--item)" },
-  ".cm-rule.recipe": { borderLeftColor: "var(--recipe)" },
+  ".cm-rule": { borderLeft: "3px solid transparent" },
+  ".cm-rule.item": { borderLeft: "3px dotted var(--item)" },
+  ".cm-rule.recipe": { borderLeft: "3px dashed var(--recipe)" },
   ".cm-rule-header.item, .cm-rule-header.item > span": { color: "var(--item)" },
   ".cm-rule-header.recipe, .cm-rule-header.recipe > span": {
     color: "var(--recipe)",

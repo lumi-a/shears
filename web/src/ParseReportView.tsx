@@ -8,7 +8,7 @@ import {
   type JSX,
   type ParentProps,
 } from "solid-js";
-import { LinkText, ShowAll, type Target } from "./Details";
+import { LinkText, ShowAll, TagText, type Target } from "./Details";
 import type { About, Diagnostic, ParseReport } from "./session";
 
 // How many entries a list renders before "and N more". A big export has tens
@@ -87,7 +87,7 @@ function AboutLink(props: {
             title="Search for items with this tag"
             onClick={() => props.search(`{ tag = "${tag().id}" }`)}
           >
-            #{tag().id}
+            <TagText id={tag().id} />
           </button>
         )}
       </Match>
