@@ -321,9 +321,23 @@ fn recipe_id_from_path(path: &str) -> Option<String> {
 
 /// The path of the file that defines the recipe `id`.
 ///
-/// For instance, maps `minecraft:acacia_planks` to `recipes/minecraft/acacia_planks.json`.
-///
 /// `None` for an id without a namespace, which no recipe should have?
+///
+/// # Examples
+///
+/// ```
+/// use shears_core::ingest::recipe_path;
+///
+/// assert_eq!(
+///     recipe_path("minecraft:acacia_planks").as_deref(),
+///     Some("recipes/minecraft/acacia_planks.json")
+/// );
+/// assert_eq!(
+///     recipe_path("gtceu:extruder/extrude_iron_to_rod").as_deref(),
+///     Some("recipes/gtceu/extruder/extrude_iron_to_rod.json")
+/// );
+/// assert_eq!(recipe_path("acacia_planks"), None);
+/// ```
 #[inline]
 #[must_use]
 pub fn recipe_path(id: &str) -> Option<String> {
@@ -456,24 +470,48 @@ fn consumed_slot(
 /// How far outside `[0, 1]` a chance value may lie.
 pub const CHANCE_TOLERANCE: f32 = 1e-5;
 
-/// Validates a chance value read from the export, clamping it into `[0, 1]` if it's only off
-/// by noise.
+/// Validates a chance value read from the export, snapping it to 0 or 1 if it's within
+/// [`CHANCE_TOLERANCE`] of either, on both sides.
 ///
-/// TODO: If the number is <= 0 + `CHANCE_TOLERANCE` or >= 1 - `CHANCE_TOLERANCE`, should we
-/// also clamp it to 0 or 1 respectively? That would help with checks like "This is a catalyst"
-/// and "this is a definitely consumed item", in case some recipes have, for any reason, messed
-/// up numbers there.
+/// The snapping inside the range keeps checks like "this is a catalyst" and "this is
+/// definitely consumed" exact, even if some recipe's numbers are slightly off. GTCEu's
+/// finest step is 1/10000, ten times the tolerance, so no real chance gets snapped.
 ///
 /// # Errors
 ///
-/// If `raw` is more than [`CHANCE_TOLERANCE`] outside `[0, 1]`. That is, if `raw <=
-/// -CHANCE_TOLERANCE` or `raw >= 1+CHANCE_TOLERANCE`.
+/// If `raw` is more than [`CHANCE_TOLERANCE`] outside `[0, 1]`. That is, if `raw <
+/// -CHANCE_TOLERANCE` or `raw > 1+CHANCE_TOLERANCE`.
+///
+/// # Examples
+///
+/// ```
+/// use shears_core::ingest::validate_chance;
+///
+/// // Values inside the range pass through unchanged.
+/// assert_eq!(validate_chance(0.0), Ok(0.0));
+/// assert_eq!(validate_chance(0.5), Ok(0.5));
+/// assert_eq!(validate_chance(1.0), Ok(1.0));
+///
+/// // Noise within the tolerance snaps to the exact boundary, from either side.
+/// assert_eq!(validate_chance(-0.000_001), Ok(0.0));
+/// assert_eq!(validate_chance(1.000_001), Ok(1.0));
+/// assert_eq!(validate_chance(0.000_001), Ok(0.0));
+/// assert_eq!(validate_chance(0.999_999), Ok(1.0));
+///
+/// // Further out is an error.
+/// assert!(validate_chance(-0.1).is_err());
+/// assert!(validate_chance(1.1).is_err());
+/// ```
 #[inline]
 pub fn validate_chance(raw: f32) -> Result<f32, String> {
     if raw < -CHANCE_TOLERANCE || raw > 1.0 + CHANCE_TOLERANCE {
         Err(format!("chance {raw} is out of range [0, 1]"))
+    } else if raw <= CHANCE_TOLERANCE {
+        Ok(0.0)
+    } else if raw >= 1.0 - CHANCE_TOLERANCE {
+        Ok(1.0)
     } else {
-        Ok(raw.clamp(0.0, 1.0))
+        Ok(raw)
     }
 }
 
@@ -526,8 +564,7 @@ mod tests {
 
     use super::{
         About, DEFAULT_SHAPES_TOML, ParseReport, PlainResolverParts, RawFile, build_items,
-        ingest, recipe_id_from_path, recipe_path, resolve_output_id, validate_chance,
-        with_namespace,
+        ingest, recipe_id_from_path, recipe_path, resolve_output_id, with_namespace,
     };
     use crate::model::{ItemIndex, ItemKind};
 
@@ -538,25 +575,6 @@ mod tests {
 
         assert_eq!(id, "gtceu:extruder/extrude_iron_to_rod");
         assert_eq!(recipe_path(&id).as_deref(), Some(path));
-    }
-
-    #[test]
-    fn values_inside_the_range_pass_through_unchanged() {
-        assert_eq!(validate_chance(0.0), Ok(0.0));
-        assert_eq!(validate_chance(1.0), Ok(1.0));
-        assert_eq!(validate_chance(0.5), Ok(0.5));
-    }
-
-    #[test]
-    fn noise_within_tolerance_is_clamped_to_the_exact_boundary() {
-        assert_eq!(validate_chance(-0.000_001), Ok(0.0));
-        assert_eq!(validate_chance(1.000_001), Ok(1.0));
-    }
-
-    #[test]
-    fn genuinely_out_of_range_is_an_error() {
-        drop(validate_chance(-0.1).expect_err("-0.5 is far outside [0, 1]"));
-        drop(validate_chance(1.1).expect_err("1.5 is far outside [0, 1]"));
     }
 
     #[test]
