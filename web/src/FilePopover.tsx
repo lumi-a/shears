@@ -9,28 +9,30 @@ interface Shown {
 }
 
 // One popover for showing a file of the export, e.g. a recipe's JSON, with a
-// button to copy it. `show` opens it with the file at `path`.
+// button to copy it. `show` opens it with the file at `path`, once that's read,
+// so it doesn't flash empty first.
 export function createFilePopover(session: SessionClient) {
   let popover!: HTMLDivElement;
   const [shown, setShown] = createSignal<Shown>();
   const [copied, setCopied] = createSignal(false);
 
+  // The latest path asked for. A slower earlier read won't replace it.
+  let latest: string | undefined;
   const show = (path: string) => {
-    setShown({ path });
-    setCopied(false);
-    popover.showPopover();
+    latest = path;
+    const open = (current: Shown) => {
+      if (latest !== path) return;
+      setShown(current);
+      setCopied(false);
+      if (!popover.matches(":popover-open")) popover.showPopover();
+    };
     session.fileText(path).then(
-      (text) => {
-        if (shown()?.path === path) setShown({ path, text });
-      },
-      (caught: unknown) => {
-        if (shown()?.path === path) {
-          setShown({
-            path,
-            error: caught instanceof Error ? caught.message : String(caught),
-          });
-        }
-      },
+      (text) => open({ path, text }),
+      (caught: unknown) =>
+        open({
+          path,
+          error: caught instanceof Error ? caught.message : String(caught),
+        }),
     );
   };
 
@@ -66,16 +68,7 @@ export function createFilePopover(session: SessionClient) {
             <Show when={current().error}>
               {(message) => <p class="error">{message()}</p>}
             </Show>
-            <Show
-              when={current().text}
-              fallback={
-                <Show when={current().error === undefined}>
-                  <p class="hint">Loading...</p>
-                </Show>
-              }
-            >
-              {(text) => <pre>{text()}</pre>}
-            </Show>
+            <Show when={current().text}>{(text) => <pre>{text()}</pre>}</Show>
           </>
         )}
       </Show>
