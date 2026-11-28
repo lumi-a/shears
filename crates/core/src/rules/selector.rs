@@ -181,15 +181,15 @@ pub enum Selector {
     Not(Box<Self>),
     /// Matches the subject's full namespaced id.
     Id(Pattern),
-    /// Matches the subject id's namespace, i.e. the part before `:`, for a string.
+    /// Matches the subject id's namespace, i.e. the part before `:`.
     ///
     /// This can also be done by matching on Id with e.g. `/^minecraft:/`, but this is
     /// more legible.
-    Mod(String),
+    Mod(Pattern),
     /// Matches an item's kind (`"item"`/`"fluid"`) or a recipe's type id.
     Type(Pattern),
-    /// Matches one of an item's tags.
-    Tag(String),
+    /// Matches if any of an item's tags matches.
+    Tag(Pattern),
     /// Matches if any input slot has a member matching the nested [`Context::Slot`]
     /// selector, which can also use `is_catalyst`. Recipe-only.
     Input(Box<Self>),
@@ -262,11 +262,15 @@ fn parse_clause(
         "id" => string_value(value, "id")
             .and_then(Pattern::parse)
             .map(Selector::Id),
-        "mod" => string_value(value, "mod").map(|m| Selector::Mod(m.to_owned())),
+        "mod" => string_value(value, "mod")
+            .and_then(Pattern::parse)
+            .map(Selector::Mod),
         "type" => string_value(value, "type")
             .and_then(Pattern::parse)
             .map(Selector::Type),
-        "tag" => string_value(value, "tag").map(|tag| Selector::Tag(tag.to_owned())),
+        "tag" => string_value(value, "tag")
+            .and_then(Pattern::parse)
+            .map(Selector::Tag),
         "has_input" => {
             parse(value, Context::Slot).map(|inner| Selector::Input(Box::new(inner)))
         }
@@ -314,15 +318,6 @@ const fn item_kind_name(kind: ItemKind) -> &'static str {
     }
 }
 
-/// `graph.tags()`'s index for `tag`, if it's interned at all.
-fn tag_index(graph: &Graph, tag: &str) -> Option<u32> {
-    graph
-        .tags()
-        .iter()
-        .position(|candidate| candidate == tag)
-        .map(|position| u32::try_from(position).expect("fewer than u32::MAX tags"))
-}
-
 /// Whether `item` matches `selector`.
 ///
 /// # Panics
@@ -347,11 +342,14 @@ pub fn matches_item(selector: &Selector, graph: &Graph, item: ItemIndex) -> bool
             .any(|clause| matches_item(clause, graph, item)),
         Selector::Not(inner) => !matches_item(inner, graph, item),
         Selector::Id(pattern) => pattern.matches(subject.id()),
-        Selector::Mod(expected) => namespace_of(subject.id()) == expected,
+        Selector::Mod(pattern) => pattern.matches(namespace_of(subject.id())),
         Selector::Type(pattern) => pattern.matches(item_kind_name(subject.kind())),
-        Selector::Tag(tag) => {
-            tag_index(graph, tag).is_some_and(|index| subject.tags().contains(&index))
-        }
+        Selector::Tag(pattern) => subject.tags().iter().any(|&tag| {
+            usize::try_from(tag)
+                .ok()
+                .and_then(|position| graph.tags().get(position))
+                .is_some_and(|name| pattern.matches(name))
+        }),
         Selector::Input(_) | Selector::Output(_) | Selector::IsCatalyst(_) => {
             unreachable!("parse() only builds these for Context::Recipe or Context::Slot")
         }
@@ -382,7 +380,7 @@ pub fn matches_recipe(selector: &Selector, graph: &Graph, recipe: RecipeIndex) -
             .any(|clause| matches_recipe(clause, graph, recipe)),
         Selector::Not(inner) => !matches_recipe(inner, graph, recipe),
         Selector::Id(pattern) => pattern.matches(subject.id()),
-        Selector::Mod(expected) => namespace_of(subject.id()) == expected,
+        Selector::Mod(pattern) => pattern.matches(namespace_of(subject.id())),
         Selector::Type(pattern) => {
             let rtype = usize::try_from(subject.rtype()).expect("u32 always fits in usize");
             let name = graph
@@ -540,6 +538,21 @@ mod tests {
     }
 
     #[test]
+    fn mod_matches_the_namespace_against_a_regex() {
+        let (graph, _required) = parse_graph(
+            "gtceu:macerator/macerate_cobblestone: cobblestone -> gtceu:stone_dust",
+        );
+        let select = selector(r#"filter = { mod = "/^gt/" }"#, Context::Item);
+
+        assert!(matches_item(
+            &select,
+            &graph,
+            item(&graph, "gtceu:stone_dust")
+        ));
+        assert!(!matches_item(&select, &graph, item(&graph, "cobblestone")));
+    }
+
+    #[test]
     fn object_is_and_array_is_or() {
         let (graph, _required) = parse_graph(
             "
@@ -650,6 +663,21 @@ mod tests {
             &graph,
             item(&graph, "gtceu:rod_extruder_mold")
         ));
+    }
+
+    #[test]
+    fn tag_matches_items_carrying_a_tag_the_regex_matches() {
+        let graph = extruder_graph();
+        let matching = selector(r#"filter = { tag = "/^forge:ingots\\//" }"#, Context::Item);
+        let other = selector(r#"filter = { tag = "/^forge:plates/" }"#, Context::Item);
+
+        assert!(matches_item(&matching, &graph, item(&graph, "iron_ingot")));
+        assert!(!matches_item(
+            &matching,
+            &graph,
+            item(&graph, "gtceu:iron_rod")
+        ));
+        assert!(!matches_item(&other, &graph, item(&graph, "iron_ingot")));
     }
 
     #[test]

@@ -95,7 +95,8 @@
 //!
 //! - `id`, `mod`, `type`: Item or recipe, matched exactly as a string, or against a `/regex/`
 //!   if surrounded by slashes.
-//! - `tag`: Item only, matches tag membership.
+//! - `tag`: Item only, matches if any of the item's tags matches, exactly or against a
+//!   `/regex/`.
 //! - `has_input`, `has_output`: Recipe only, matches if any of the recipe's input/output slots
 //!   match the contained selector.
 //! - `is_catalyst`: Only valid inside a `has_input` selector, matches a slot whose chance is
