@@ -54,12 +54,8 @@ const theme = EditorView.theme({
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground":
     { backgroundColor: "var(--editor-selection)" },
   ".cm-placeholder": { color: "var(--fg-muted)" },
-  // A rule's lines get a border in its kind's colour, and its header the
-  // colour itself. The header's spans come from the TOML highlighting, so
-  // they're coloured directly.
-  ".cm-rule": { borderLeft: "3px solid transparent" },
-  ".cm-rule.item": { borderLeft: "3px dotted var(--item)" },
-  ".cm-rule.recipe": { borderLeft: "3px dashed var(--recipe)" },
+  // A rule's header gets its kind's colour. The header's spans come from the
+  // TOML highlighting, so they're coloured directly.
   ".cm-rule-header.item, .cm-rule-header.item > span": { color: "var(--item)" },
   ".cm-rule-header.recipe, .cm-rule-header.recipe > span": {
     color: "var(--recipe)",
@@ -78,35 +74,25 @@ const highlighting = HighlightStyle.define([
 
 const tomlLanguage = StreamLanguage.define(toml);
 
-// Matches a table header, with the rule kind if it's [[item-rule]] or
-// [[recipe-rule]].
-const TABLE_HEADER = /^\s*\[(?:\[\s*(item|recipe)-rule\s*\]\]|)/;
+// Matches an [[item-rule]] or [[recipe-rule]] header, with the kind.
+const RULE_HEADER = /^\s*\[\[\s*(item|recipe)-rule\s*\]\]/;
 
-const ruleLines = {
-  item: Decoration.line({ class: "cm-rule item" }),
-  recipe: Decoration.line({ class: "cm-rule recipe" }),
-};
 const ruleHeaders = {
-  item: Decoration.line({ class: "cm-rule cm-rule-header item" }),
-  recipe: Decoration.line({ class: "cm-rule cm-rule-header recipe" }),
+  item: Decoration.line({ class: "cm-rule-header item" }),
+  recipe: Decoration.line({ class: "cm-rule-header recipe" }),
 };
 
-// Marks each line of an item or recipe rule with its kind, so index.css can
-// colour them like the item and recipe links. Harmless in parsing.toml, which
-// has no such tables.
+// Marks each item or recipe rule's header with its kind, so it's coloured like
+// the item and recipe links. Harmless in parsing.toml, which has no such
+// tables.
 function ruleDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
-  let kind: "item" | "recipe" | undefined;
   for (let number = 1; number <= view.state.doc.lines; number++) {
     const line = view.state.doc.line(number);
-    const header = TABLE_HEADER.exec(line.text);
-    if (header !== null) {
-      kind = header[1] as "item" | "recipe" | undefined;
-      if (kind !== undefined)
-        builder.add(line.from, line.from, ruleHeaders[kind]);
-    } else if (kind !== undefined) {
-      builder.add(line.from, line.from, ruleLines[kind]);
-    }
+    const kind = RULE_HEADER.exec(line.text)?.[1] as
+      "item" | "recipe" | undefined;
+    if (kind !== undefined)
+      builder.add(line.from, line.from, ruleHeaders[kind]);
   }
   return builder.finish();
 }
