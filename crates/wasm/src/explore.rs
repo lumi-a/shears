@@ -1,14 +1,14 @@
 //! Searching the graph with selectors.
 
+use itertools::Itertools as _;
+use serde::Serialize;
+use shears_core::analysis::transitively_required::TransitivelyRequired;
+use shears_core::model::{Graph, ItemIndex, RecipeIndex};
 use shears_core::rules::selector::{self, Context, Selector};
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-use itertools::Itertools as _;
-use serde::Serialize;
-use shears_core::model::{ItemIndex, RecipeIndex};
-
-use crate::{Kind, Link, Links, Session, js_error};
+use crate::{Kind, Link, Links, Node, Session, js_error};
 
 /// What a search found.
 #[derive(Debug, Serialize)]
@@ -145,8 +145,8 @@ impl Session {
             return serde_json::to_string(&search_text(self, &text, items, recipes, limit))
                 .map_err(|error| js_error(&error));
         }
-        let item_filter = parse_query(query, Context::Item);
-        let recipe_filter = parse_query(query, Context::Recipe);
+        let item_filter = parse_query(query, ItemIndex::CONTEXT);
+        let recipe_filter = parse_query(query, RecipeIndex::CONTEXT);
         if let (Err(item_error), Err(recipe_error)) = (&item_filter, &recipe_filter) {
             let message = if item_error == recipe_error {
                 item_error.clone()
@@ -155,29 +155,15 @@ impl Session {
             };
             return Err(js_error(&message));
         }
-        let liveness = self.analyzed.as_ref().map(|analyzed| &analyzed.live);
         let graph = &self.graph;
+        let liveness = self.analyzed.as_ref().map(|analyzed| &analyzed.live);
 
-        let item_matches: Option<Vec<ItemIndex>> = item_filter.ok().map(|filter| {
-            graph
-                .item_indices()
-                .filter(|&item| {
-                    filter
-                        .as_ref()
-                        .is_none_or(|matching| selector::matches_item(matching, graph, item))
-                })
-                .collect()
-        });
-        let recipe_matches: Option<Vec<RecipeIndex>> = recipe_filter.ok().map(|filter| {
-            graph
-                .recipe_indices()
-                .filter(|&recipe| {
-                    filter.as_ref().is_none_or(|matching| {
-                        selector::matches_recipe(matching, graph, recipe)
-                    })
-                })
-                .collect()
-        });
+        let item_matches: Option<Vec<ItemIndex>> = item_filter
+            .ok()
+            .map(|filter| matching(graph, filter.as_ref()));
+        let recipe_matches: Option<Vec<RecipeIndex>> = recipe_filter
+            .ok()
+            .map(|filter| matching(graph, filter.as_ref()));
 
         let shown_items = item_matches
             .as_deref()
@@ -187,23 +173,18 @@ impl Session {
             .as_deref()
             .filter(|_| recipes)
             .unwrap_or_default();
-        let item_link = |item: ItemIndex| Link {
-            kind: Kind::Item,
-            id: graph.item(item).id().to_owned(),
-            live: liveness.map(|live| live.is_transitively_required(item)),
-        };
-        let recipe_link = |recipe: RecipeIndex| Link {
-            kind: Kind::Recipe,
-            id: graph.recipe(recipe).id().to_owned(),
-            live: liveness.map(|live| live.is_recipe_transitively_required(recipe)),
-        };
         // Both are in index order, so sorted by id already. Merging them keeps it that way,
         // with an item before a recipe of the same id.
         // This is done lazily, so only the links shown are made.
-        let merged = shown_items.iter().copied().map(item_link).merge_by(
-            shown_recipes.iter().copied().map(recipe_link),
-            |item, recipe| item.id <= recipe.id,
-        );
+        let merged = shown_items
+            .iter()
+            .map(|&item| Link::to(item, graph, liveness))
+            .merge_by(
+                shown_recipes
+                    .iter()
+                    .map(|&recipe| Link::to(recipe, graph, liveness)),
+                |item, recipe| item.id <= recipe.id,
+            );
         let result = SearchResults {
             item_count: item_matches.as_ref().map(Vec::len),
             recipe_count: recipe_matches.as_ref().map(Vec::len),
@@ -216,6 +197,36 @@ impl Session {
     }
 }
 
+/// The `N`s matching `filter`, every one for `None`, in index order.
+fn matching<N: Node>(graph: &Graph, filter: Option<&Selector>) -> Vec<N> {
+    N::all(graph)
+        .filter(|&node| filter.is_none_or(|selector| node.matches(selector, graph)))
+        .collect()
+}
+
+/// The `N`s whose ids match `query`, unsorted.
+fn text_hits<'graph, N: Node>(
+    graph: &'graph Graph,
+    liveness: Option<&TransitivelyRequired>,
+    query: &TextQuery,
+) -> Vec<Hit<'graph>> {
+    let nodes: Vec<N> = N::all(graph).collect();
+    let ids: Vec<&str> = nodes.iter().map(|&node| node.id(graph)).collect();
+    query
+        .matches(&ids)
+        .into_iter()
+        .filter_map(|(score, position)| {
+            let node = *nodes.get(position)?;
+            Some(Hit {
+                score,
+                id: ids.get(position)?,
+                kind: N::KIND,
+                live: liveness.map(|live| node.is_live(live)),
+            })
+        })
+        .collect()
+}
+
 /// [`Session::search_json`] for plain text.
 fn search_text(
     session: &Session,
@@ -226,44 +237,16 @@ fn search_text(
 ) -> SearchResults {
     let graph = &session.graph;
     let liveness = session.analyzed.as_ref().map(|analyzed| &analyzed.live);
-
-    let item_indices: Vec<ItemIndex> = graph.item_indices().collect();
-    let item_ids: Vec<&str> = item_indices
-        .iter()
-        .map(|&item| graph.item(item).id())
-        .collect();
-    let item_matches = query.matches(&item_ids);
-    let recipe_indices: Vec<RecipeIndex> = graph.recipe_indices().collect();
-    let recipe_ids: Vec<&str> = recipe_indices
-        .iter()
-        .map(|&recipe| graph.recipe(recipe).id())
-        .collect();
-    let recipe_matches = query.matches(&recipe_ids);
+    let item_hits = text_hits::<ItemIndex>(graph, liveness, query);
+    let recipe_hits = text_hits::<RecipeIndex>(graph, liveness, query);
+    let (item_count, recipe_count) = (item_hits.len(), recipe_hits.len());
 
     let mut hits = Vec::new();
     if items {
-        hits.extend(item_matches.iter().filter_map(|&(score, position)| {
-            let item = *item_indices.get(position)?;
-            let id = *item_ids.get(position)?;
-            Some(Hit {
-                score,
-                id,
-                kind: Kind::Item,
-                live: liveness.map(|live| live.is_transitively_required(item)),
-            })
-        }));
+        hits.extend(item_hits);
     }
     if recipes {
-        hits.extend(recipe_matches.iter().filter_map(|&(score, position)| {
-            let recipe = *recipe_indices.get(position)?;
-            let id = *recipe_ids.get(position)?;
-            Some(Hit {
-                score,
-                id,
-                kind: Kind::Recipe,
-                live: liveness.map(|live| live.is_recipe_transitively_required(recipe)),
-            })
-        }));
+        hits.extend(recipe_hits);
     }
     // Best first. Among equals the shorter id, as it has less besides the match, then by
     // id, then items before recipes (the sort is stable).
@@ -275,8 +258,8 @@ fn search_text(
     });
 
     SearchResults {
-        item_count: Some(item_matches.len()),
-        recipe_count: Some(recipe_matches.len()),
+        item_count: Some(item_count),
+        recipe_count: Some(recipe_count),
         links: Links {
             total: hits.len(),
             shown: hits

@@ -24,8 +24,9 @@ use shears_core::analysis::transitively_required::{
 };
 use shears_core::archive;
 use shears_core::ingest::{self, ParseReport, RawFile, find_root_directory};
-use shears_core::model::Graph;
+use shears_core::model::{Graph, ItemIndex, RecipeIndex};
 use shears_core::rules::RuleSet;
+use shears_core::rules::selector::{self, Context, Selector};
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -172,6 +173,81 @@ struct Link {
     /// Whether it's transitively required (in case of an item) or propagates (in case of a
     /// recipe). `None` before the first analysis.
     live: Option<bool>,
+}
+
+impl Link {
+    /// A link to `node` in `graph`, with its liveness from `liveness` if there's an
+    /// analysis.
+    fn to<N: Node>(node: N, graph: &Graph, liveness: Option<&TransitivelyRequired>) -> Self {
+        Self {
+            kind: N::KIND,
+            id: node.id(graph).to_owned(),
+            live: liveness.map(|live| node.is_live(live)),
+        }
+    }
+}
+
+/// An item's or a recipe's index, for code that treats both alike.
+trait Node: Copy {
+    /// Which of the two it is.
+    const KIND: Kind;
+    /// The [`Context`] a selector for it is parsed in.
+    const CONTEXT: Context;
+
+    /// Every one in `graph`, in index order, so sorted by id.
+    fn all(graph: &Graph) -> impl Iterator<Item = Self>;
+
+    /// Its id.
+    fn id(self, graph: &Graph) -> &str;
+
+    /// Whether `live` found it transitively required, for an item, or propagating, for a
+    /// recipe.
+    fn is_live(self, live: &TransitivelyRequired) -> bool;
+
+    /// Whether it matches `selector`, which was parsed in [`Self::CONTEXT`].
+    fn matches(self, selector: &Selector, graph: &Graph) -> bool;
+}
+
+impl Node for ItemIndex {
+    const KIND: Kind = Kind::Item;
+    const CONTEXT: Context = Context::Item;
+
+    fn all(graph: &Graph) -> impl Iterator<Item = Self> {
+        graph.item_indices()
+    }
+
+    fn id(self, graph: &Graph) -> &str {
+        graph.item(self).id()
+    }
+
+    fn is_live(self, live: &TransitivelyRequired) -> bool {
+        live.is_transitively_required(self)
+    }
+
+    fn matches(self, selector: &Selector, graph: &Graph) -> bool {
+        selector::matches_item(selector, graph, self)
+    }
+}
+
+impl Node for RecipeIndex {
+    const KIND: Kind = Kind::Recipe;
+    const CONTEXT: Context = Context::Recipe;
+
+    fn all(graph: &Graph) -> impl Iterator<Item = Self> {
+        graph.recipe_indices()
+    }
+
+    fn id(self, graph: &Graph) -> &str {
+        graph.recipe(self).id()
+    }
+
+    fn is_live(self, live: &TransitivelyRequired) -> bool {
+        live.is_recipe_transitively_required(self)
+    }
+
+    fn matches(self, selector: &Selector, graph: &Graph) -> bool {
+        selector::matches_recipe(selector, graph, self)
+    }
 }
 
 /// The first few of a list of links, and how long the whole list is.

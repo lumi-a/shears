@@ -7,11 +7,11 @@ use shears_core::analysis::edges::EdgeState;
 use shears_core::analysis::explain::cause_text;
 use shears_core::analysis::transitively_required::Why;
 use shears_core::ingest;
-use shears_core::model::{Graph, ItemIndex, ItemKind, RecipeIndex};
+use shears_core::model::{Graph, ItemIndex, ItemKind};
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-use crate::{Analyzed, Kind, Link, Links, Session, js_error};
+use crate::{Analyzed, Link, Links, Node, Session, js_error};
 
 /// One step of why an item is transitively required.
 #[derive(Debug, Serialize)]
@@ -137,26 +137,13 @@ struct Linker<'session> {
 }
 
 impl Linker<'_> {
-    /// A link to `item`.
-    fn item(&self, item: ItemIndex) -> Link {
-        Link {
-            kind: Kind::Item,
-            id: self.graph.item(item).id().to_owned(),
-            live: self
-                .analyzed
-                .map(|analyzed| analyzed.live.is_transitively_required(item)),
-        }
-    }
-
-    /// A link to `recipe`.
-    fn recipe(&self, recipe: RecipeIndex) -> Link {
-        Link {
-            kind: Kind::Recipe,
-            id: self.graph.recipe(recipe).id().to_owned(),
-            live: self
-                .analyzed
-                .map(|analyzed| analyzed.live.is_recipe_transitively_required(recipe)),
-        }
+    /// A link to `node`.
+    fn link<N: Node>(&self, node: N) -> Link {
+        Link::to(
+            node,
+            self.graph,
+            self.analyzed.map(|analyzed| &analyzed.live),
+        )
     }
 
     /// Links to the first `limit` of `targets`, and how many there are.
@@ -194,8 +181,8 @@ impl Linker<'_> {
                 }
                 Some(&Why::Via { recipe, output }) => {
                     steps.push(WhyStep::Via {
-                        recipe: self.recipe(recipe),
-                        output: self.item(output),
+                        recipe: self.link(recipe),
+                        output: self.link(output),
                     });
                     current = output;
                 }
@@ -258,11 +245,11 @@ impl Session {
                     .of(item)
                     .iter()
                     .map(|&(recipe, _output)| recipe),
-                Linker::recipe,
+                Linker::link,
             ),
             used_in: linker.list(
                 self.lookups.consumers().of(item).iter().copied(),
-                Linker::recipe,
+                Linker::link,
             ),
         };
         serde_json::to_string(&detail).map_err(|error| js_error(&error))
@@ -304,7 +291,7 @@ impl Session {
                     tag: slot.tag().and_then(|tag| name_of(tag, self.graph.tags())),
                     count: slot.count(),
                     chance: slot.chance(),
-                    members: linker.list(slot.members().iter().copied(), Linker::item),
+                    members: linker.list(slot.members().iter().copied(), Linker::link),
                 })
                 .collect(),
             outputs: data
@@ -322,7 +309,7 @@ impl Session {
                         )
                     });
                     OutputDetail {
-                        item: linker.item(output.item()),
+                        item: linker.link(output.item()),
                         count: output.count(),
                         chance: output.chance(),
                         edge: edge.as_ref().map(|&(name, _)| name),
