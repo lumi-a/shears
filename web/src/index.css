@@ -9,8 +9,8 @@
   --border: light-dark(oklch(88% 0 0), oklch(35% 0 0));
   --accent: light-dark(oklch(50% 0.2 265), oklch(72% 0.15 265));
   --error: light-dark(oklch(50% 0.2 25), oklch(72% 0.15 25));
-  --item: light-dark(oklch(50% 0.1 60), oklch(78% 0.1 60));
-  --recipe: light-dark(oklch(50% 0.1 140), oklch(78% 0.1 140));
+  --item: light-dark(oklch(50% 0.3 200), oklch(78% 0.15 200));
+  --recipe: light-dark(oklch(50% 0.3 140), oklch(78% 0.15 140));
 
   /* TOML editor */
   --editor-active-line: light-dark(oklch(0% 0 0 / 3%), oklch(100% 0 0 / 2%));
