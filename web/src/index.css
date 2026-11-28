@@ -350,6 +350,7 @@ h3 {
 .file-popover pre {
   font-family: var(--font-mono);
   font-size: var(--font-size-small);
+  tab-size: 2;
 }
 
 .file {
